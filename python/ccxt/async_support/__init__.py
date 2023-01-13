@@ -66,6 +66,7 @@ from ccxt.async_support.bitbank import bitbank                                  
 from ccxt.async_support.bitbay import bitbay                                    # noqa: F401
 from ccxt.async_support.bitbns import bitbns                                    # noqa: F401
 from ccxt.async_support.bitcoincom import bitcoincom                            # noqa: F401
+from ccxt.async_support.bitcointrade import bitcointrade                        # noqa: F401
 from ccxt.async_support.bitfinex import bitfinex                                # noqa: F401
 from ccxt.async_support.bitfinex2 import bitfinex2                              # noqa: F401
 from ccxt.async_support.bitflyer import bitflyer                                # noqa: F401
@@ -179,6 +180,7 @@ exchanges = [
     'bitbay',
     'bitbns',
     'bitcoincom',
+    'bitcointrade',
     'bitfinex',
     'bitfinex2',
     'bitflyer',

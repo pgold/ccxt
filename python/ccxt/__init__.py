@@ -86,6 +86,7 @@ from ccxt.bitbank import bitbank                                      # noqa: F4
 from ccxt.bitbay import bitbay                                        # noqa: F401
 from ccxt.bitbns import bitbns                                        # noqa: F401
 from ccxt.bitcoincom import bitcoincom                                # noqa: F401
+from ccxt.bitcointrade import bitcointrade                            # noqa: F401
 from ccxt.bitfinex import bitfinex                                    # noqa: F401
 from ccxt.bitfinex2 import bitfinex2                                  # noqa: F401
 from ccxt.bitflyer import bitflyer                                    # noqa: F401
@@ -199,6 +200,7 @@ exchanges = [
     'bitbay',
     'bitbns',
     'bitcoincom',
+    'bitcointrade',
     'bitfinex',
     'bitfinex2',
     'bitflyer',

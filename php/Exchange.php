@@ -75,6 +75,7 @@ class Exchange {
         'bitbay',
         'bitbns',
         'bitcoincom',
+        'bitcointrade',
         'bitfinex',
         'bitfinex2',
         'bitflyer',
