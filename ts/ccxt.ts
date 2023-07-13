@@ -141,6 +141,7 @@ import phemex from  './src/phemex.js'
 import poloniex from  './src/poloniex.js'
 import poloniexfutures from  './src/poloniexfutures.js'
 import probit from  './src/probit.js'
+import ripio from  './src/ripio.js'
 import stex from  './src/stex.js'
 import tidex from  './src/tidex.js'
 import timex from  './src/timex.js'
@@ -211,6 +212,7 @@ import okxPro from  './src/pro/okx.js'
 import phemexPro from  './src/pro/phemex.js'
 import poloniexfuturesPro from  './src/pro/poloniexfutures.js'
 import probitPro from  './src/pro/probit.js'
+import ripioPro from  './src/pro/ripio.js'
 import upbitPro from  './src/pro/upbit.js'
 import wazirxPro from  './src/pro/wazirx.js'
 import whitebitPro from  './src/pro/whitebit.js'
@@ -312,6 +314,7 @@ const exchanges = {
     'poloniex':               poloniex,
     'poloniexfutures':        poloniexfutures,
     'probit':                 probit,
+    'ripio':                  ripio,
     'stex':                   stex,
     'tidex':                  tidex,
     'timex':                  timex,
@@ -382,6 +385,7 @@ const pro = {
     'phemex':                 phemexPro,
     'poloniexfutures':        poloniexfuturesPro,
     'probit':                 probitPro,
+    'ripio':                  ripioPro,
     'upbit':                  upbitPro,
     'wazirx':                 wazirxPro,
     'whitebit':               whitebitPro,
@@ -554,6 +558,7 @@ export {
     poloniex,
     poloniexfutures,
     probit,
+    ripio,
     stex,
     tidex,
     timex,

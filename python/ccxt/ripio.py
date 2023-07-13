@@ -4,115 +4,119 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
+from ccxt.abstract.ripio import ImplicitAPI
 from ccxt.base.types import OrderSide
 from typing import Optional
 from typing import List
 from ccxt.base.errors import ExchangeError
+from ccxt.base.errors import PermissionDenied
 from ccxt.base.errors import ArgumentsRequired
-from ccxt.base.errors import BadRequest
-from ccxt.base.errors import BadSymbol
+from ccxt.base.errors import NullResponse
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
+from ccxt.base.errors import OrderNotFillable
+from ccxt.base.errors import NetworkError
 from ccxt.base.errors import DDoSProtection
+from ccxt.base.errors import RateLimitExceeded
+from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.decimal_to_precision import TICK_SIZE
+from ccxt.base.precise import Precise
 
 
-class ripio(Exchange):
+class ripio(Exchange, ImplicitAPI):
 
     def describe(self):
         return self.deep_extend(super(ripio, self).describe(), {
             'id': 'ripio',
             'name': 'Ripio',
-            'countries': ['AR', 'BR'],  # Argentina
+            'countries': ['AR', 'BR'],
             'rateLimit': 50,
-            'version': 'v1',
+            'version': 'v4',
             'pro': True,
-            # new metainfo interface
             'has': {
-                'CORS': None,
+                'CORS': False,
                 'spot': True,
                 'margin': False,
                 'swap': False,
                 'future': False,
                 'option': False,
-                'addMargin': False,
                 'cancelOrder': True,
                 'createOrder': True,
-                'createReduceOnlyOrder': False,
                 'fetchBalance': True,
-                'fetchBorrowRate': False,
-                'fetchBorrowRateHistories': False,
-                'fetchBorrowRateHistory': False,
-                'fetchBorrowRates': False,
-                'fetchBorrowRatesPerSymbol': False,
+                'fetchCanceledOrders': True,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
-                'fetchFundingHistory': False,
-                'fetchFundingRate': False,
-                'fetchFundingRateHistory': False,
-                'fetchFundingRates': False,
-                'fetchIndexOHLCV': False,
-                'fetchLeverage': False,
-                'fetchLeverageTiers': False,
-                'fetchMarginMode': False,
-                'fetchMarkOHLCV': False,
+                'fetchL2OrderBook': True,
+                'fetchMarkets': True,
                 'fetchMyTrades': True,
-                'fetchOpenInterestHistory': False,
+                'fetchOHLCV': False,
+                'fetchOpenInterest': False,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
                 'fetchOrders': True,
-                'fetchPosition': False,
-                'fetchPositionMode': False,
-                'fetchPositions': False,
-                'fetchPositionsRisk': False,
-                'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTrades': True,
-                'fetchTradingFee': False,
-                'fetchTradingFees': True,
-                'reduceMargin': False,
-                'setLeverage': False,
-                'setMarginMode': False,
-                'setPositionMode': False,
+                'withdraw': True,
             },
             'urls': {
-                'logo': 'https://user-images.githubusercontent.com/1294454/94507548-a83d6a80-0218-11eb-9998-28b9cec54165.jpg',
+                'logo': 'https://user-images.githubusercontent.com/1892491/179565296-42198bf8-2228-47d6-a1b5-fd763a163c9d.jpg',
                 'api': {
-                    'public': 'https://api.exchange.ripio.com/api',
-                    'private': 'https://api.exchange.ripio.com/api',
+                    'public': 'https://api.ripiotrade.co/v4/public',
+                    'private': 'https://api.ripiotrade.co/v4',
                 },
-                'www': 'https://exchange.ripio.com',
+                'www': 'https://trade.ripio.com',
                 'doc': [
-                    'https://exchange.ripio.com/en/api/',
+                    'https://apidocs.ripiotrade.co/v4',
                 ],
-                'fees': 'https://exchange.ripio.com/en/fee',
             },
             'api': {
                 'public': {
                     'get': [
-                        'rate/all/',
-                        'rate/{pair}/',
-                        'orderbook/{pair}/',
-                        'tradehistory/{pair}/',
-                        'pair/',
-                        'currency/',
-                        'orderbook/{pair}/depth/',
+                        'tickers/',
+                        'tickers/{pair}/',
+                        'orders/level-3/',
+                        'orders/level-2/',
+                        'trades/',
+                        'currencies/',
+                        'pairs/',
                     ],
                 },
                 'private': {
                     'get': [
-                        'balances/exchange_balances/',
-                        'order/{pair}/{order_id}/',
-                        'order/{pair}/',
-                        'trade/{pair}/',
+                        'book/summaries/',
+                        'book/estimate-price/{pair}/',
+                        'book/orders/level-3/',
+                        'book/orders/level-2/',
+                        'user/balances/',
+                        'user/fees-and-limits/',
+                        'user/statement/',
+                        'user/statement/{currency_code}/',
+                        'user/trades/',
+                        'orders/',
+                        'orders/open/',
+                        'orders/{id}/',
+                        'orders/by-external-id/{external_id}/',
+                        'deposits/',
+                        'withdrawals/',
+                        'withdrawals/estimate-fee/{currency_code}/',
+                        'wallets/is-internal/',
+                        'wallets/balance/',
+                        'wallets/balance/{date}/',
                     ],
                     'post': [
-                        'order/{pair}/',
-                        'order/{pair}/{order_id}/cancel/',
+                        'orders/',
+                        'withdrawals/',
+                        'transactions/sync/',
+                        'ticket/',
+                    ],
+                    'delete': [
+                        'orders/',
+                        'orders/by-external-id/',
+                        'orders/all/',
                     ],
                 },
             },
@@ -120,8 +124,8 @@ class ripio(Exchange):
                 'trading': {
                     'tierBased': True,
                     'percentage': True,
-                    'taker': self.parse_number('0.0'),
-                    'maker': self.parse_number('0.0'),
+                    'taker': 0.0 / 100,
+                    'maker': 0.0 / 100,
                 },
             },
             'precisionMode': TICK_SIZE,
@@ -131,26 +135,27 @@ class ripio(Exchange):
             },
             'exceptions': {
                 'exact': {
+                    '400': InvalidOrder,
+                    '401': PermissionDenied,
+                    '402': AuthenticationError,
+                    '403': PermissionDenied,
+                    '404': NullResponse,
+                    '405': ExchangeError,
+                    '429': DDoSProtection,
+                    '500': ExchangeError,
+                    '502': NetworkError,
+                    '503': OnMaintenance,
                 },
                 'broad': {
-                    'Authentication credentials were not provided': AuthenticationError,  # {"detail":"Authentication credentials were not provided."}
-                    'Disabled pair': BadSymbol,  # {"status_code":400,"errors":{"pair":["Invalid/Disabled pair BTC_ARS"]},"message":"An error has occurred, please check the form."}
-                    'Invalid order type': InvalidOrder,  # {"status_code":400,"errors":{"order_type":["Invalid order type. Valid options: ['MARKET', 'LIMIT']"]},"message":"An error has occurred, please check the form."}
-                    'Your balance is not enough': InsufficientFunds,  # {"status_code":400,"errors":{"non_field_errors":["Your balance is not enough for self order: You have 0 BTC but you need 1 BTC"]},"message":"An error has occurred, please check the form."}
-                    "Order couldn't be created": ExchangeError,  # {'status_code': 400,'errors': {'non_field_errors': _("Order couldn't be created")}, 'message': _('Seems like an unexpected error occurred. Please try again later or write us to support@ripio.com if the problem persists.')}
-                    # {"status_code":404,"errors":{"order":["Order 286e560e-b8a2-464b-8b84-15a7e2a67eab not found."]},"message":"An error has occurred, please check the form."}
-                    # {"status_code":404,"errors":{"trade":["Trade <trade_id> not found."]},"message":"An error has occurred, please check the form."}
-                    'not found': OrderNotFound,
-                    'Invalid pair': BadSymbol,  # {"status_code":400,"errors":{"pair":["Invalid pair FOOBAR"]},"message":"An error has occurred, please check the form."}
-                    'amount must be a number': BadRequest,  # {"status_code":400,"errors":{"amount":["amount must be a number"]},"message":"An error has occurred, please check the form."}
-                    'Total must be at least': InvalidOrder,  # {"status_code":400,"errors":{"non_field_errors":["Total must be at least 10."]},"message":"An error has occurred, please check the form."}
-                    'Account not found': BadRequest,  # {"error_description": "Account not found."}, "status": 404
-                    'Wrong password provided': AuthenticationError,  # {'error': "Wrong password provided."}, “status_code”: 400
-                    'User tokens limit': DDoSProtection,  # {'error': "User tokens limit. Can't create more than 10 tokens."}, “status_code”: 400
-                    'Something unexpected ocurred': ExchangeError,  # {'status_code': 400, 'errors': {'non_field_errors': 'Something unexpected ocurred!'}, 'message': 'Seems like an unexpected error occurred. Please try again later or write us to support@ripio.com if the problem persists.'}
-                    # {'status_code': 404, 'errors': {'account_balance': ['Exchange balance <currency>not found.']},'message': 'An error has occurred, please check the form.'}
-                    # {'status_code': 404, 'errors': {'account_balance': ['Account balance <id> not found.']},'message': 'An error has occurred, please check the form.'}
-                    'account_balance': BadRequest,
+                    'You did another transaction with the same amount in an interval lower than 10(ten) minutes, it is not allowed in order to prevent mistakes. Try again in a few minutes': ExchangeError,
+                    'Invalid order quantity': InvalidOrder,
+                    'Funds insufficient': InsufficientFunds,
+                    'Order already canceled': InvalidOrder,
+                    'Order already completely executed': OrderNotFillable,
+                    'No orders to cancel': OrderNotFound,
+                    'Minimum value not reached': ExchangeError,
+                    'Limit exceeded': DDoSProtection,
+                    'Too many requests': RateLimitExceeded,
                 },
             },
         })
@@ -161,96 +166,88 @@ class ripio(Exchange):
         :param dict params: extra parameters specific to the exchange api endpoint
         :returns [dict]: an array of objects representing market data
         """
-        response = self.publicGetPair(params)
+        response = self.publicGetPairs(params)
         #
         #     {
-        #         "next":null,
-        #         "previous":null,
-        #         "results":[
+        #         "data": [
         #             {
-        #                 "base":"BTC",
-        #                 "base_name":"Bitcoin",
-        #                 "quote":"USDC",
-        #                 "quote_name":"USD Coin",
-        #                 "symbol":"BTC_USDC",
-        #                 "fees":[
-        #                     {
-        #                         "traded_volume": 0.0,
-        #                         "maker_fee": 0.0,
-        #                         "taker_fee": 0.0,
-        #                         "cancellation_fee": 0.0
-        #                     }
-        #                 ],
-        #                 "country":"ZZ",
-        #                 "enabled":true,
-        #                 "priority":10,
-        #                 "min_amount":"0.00001",
-        #                 "price_tick":"0.000001",
-        #                 "min_value":"10",
-        #                 "limit_price_threshold":"25.00"
+        #                 "base": "ETH",
+        #                 "base_name": "Ethereum",
+        #                 "enabled": True,
+        #                 "min_amount": 0.0024,
+        #                 "min_value": 5,
+        #                 "price_tick": 1,
+        #                 "quote": "USDC",
+        #                 "quote_name": "USD Coin",
+        #                 "symbol": "ETH_USDC"
         #             },
-        #         ]
+        #         ],
+        #         "message": null
         #     }
         #
         result = []
-        results = self.safe_value(response, 'results', [])
+        results = self.safe_value(response, 'data', [])
         for i in range(0, len(results)):
             market = results[i]
+            id = self.safe_string(market, 'symbol')
             baseId = self.safe_string(market, 'base')
             quoteId = self.safe_string(market, 'quote')
-            id = self.safe_string(market, 'symbol')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            fees = self.safe_value(market, 'fees', [])
-            firstFee = self.safe_value(fees, 0, {})
+            symbol = base + '/' + quote
+            precision = {
+                'amount': self.safe_number(market, 'min_amount'),
+                'price': self.safe_number(market, 'price_tick'),
+            }
+            limits = {
+                'amount': {
+                    'min': self.safe_number(market, 'min_amount'),
+                    'max': None,
+                },
+                'price': {
+                    'min': None,
+                    'max': None,
+                },
+                'cost': {
+                    'min': self.safe_number(market, 'min_value'),
+                    'max': None,
+                },
+                'leverage': {
+                    'min': None,
+                    'max': None,
+                },
+            }
+            active = self.safe_value(market, 'enabled', True)
+            maker = 0.0025
+            taker = 0.005
             result.append({
                 'id': id,
-                'symbol': base + '/' + quote,
+                'symbol': symbol,
                 'base': base,
                 'quote': quote,
-                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'settleId': None,
                 'type': 'spot',
                 'spot': True,
+                'active': active,
+                'precision': precision,
+                'maker': maker,
+                'taker': taker,
+                'limits': limits,
+                'settle': None,
+                'settleId': None,
                 'margin': False,
                 'swap': False,
                 'future': False,
                 'option': False,
-                'active': self.safe_value(market, 'enabled', True),
                 'contract': False,
                 'linear': None,
                 'inverse': None,
-                'taker': self.safe_number(firstFee, 'taker_fee', 0.0),
-                'maker': self.safe_number(firstFee, 'maker_fee', 0.0),
                 'contractSize': None,
                 'expiry': None,
                 'expiryDatetime': None,
                 'strike': None,
                 'optionType': None,
-                'precision': {
-                    'amount': self.safe_number(market, 'min_amount'),
-                    'price': self.safe_number(market, 'price_tick'),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'amount': {
-                        'min': self.safe_number(market, 'min_amount'),
-                        'max': None,
-                    },
-                    'price': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': self.safe_number(market, 'min_value'),
-                        'max': None,
-                    },
-                },
                 'info': market,
             })
         return result
@@ -261,115 +258,48 @@ class ripio(Exchange):
         :param dict params: extra parameters specific to the ripio api endpoint
         :returns dict: an associative dictionary of currencies
         """
-        response = self.publicGetCurrency(params)
+        response = self.publicGetCurrencies(params)
         #
         #     {
-        #         "next":null,
-        #         "previous":null,
-        #         "results":[
+        #         "data": [
         #             {
-        #                 "name":"Argentine Peso",
-        #                 "symbol":"$",
-        #                 "currency":"ARS",
-        #                 "country":"AR",
-        #                 "decimal_places":"2",
-        #                 "enabled":true
+        #                 "active": True,
+        #                 "code": "1INCH",
+        #                 "id": "8c2b7f2a-31ed-4be1-8645-5232ac7de8fe",
+        #                 "min_withdraw_amount": 1,
+        #                 "name": "1inch",
+        #                 "precision": 8,
+        #                 "can_deposit": True,
+        #                 "can_withdraw": True
         #             },
-        #             {
-        #                 "name":"Bitcoin Cash",
-        #                 "symbol":"BCH",
-        #                 "currency":"BCH",
-        #                 "country":"AR",
-        #                 "decimal_places":"8",
-        #                 "enabled":true
-        #             },
-        #             {
-        #                 "name":"Bitcoin",
-        #                 "symbol":"BTC",
-        #                 "currency":"BTC",
-        #                 "country":"AR",
-        #                 "decimal_places":"8",
-        #                 "enabled":true
-        #             }
-        #         ]
+        #         ],
+        #         "message": null
         #     }
         #
-        results = self.safe_value(response, 'results', [])
+        results = self.safe_value(response, 'data', [])
         result = {}
         for i in range(0, len(results)):
             currency = results[i]
-            id = self.safe_string(currency, 'currency')
-            code = self.safe_currency_code(id)
+            id = self.safe_string(currency, 'id')
+            code = self.safe_currency_code(self.safe_string(currency, 'code'))
             name = self.safe_string(currency, 'name')
-            active = self.safe_value(currency, 'enabled', True)
+            active = self.safe_value(currency, 'active', True)
+            precision = self.safe_integer(currency, 'precision')
+            min_withdraw_amount = self.safe_integer(currency, 'min_withdraw_amount')
             result[code] = {
                 'id': id,
                 'code': code,
                 'name': name,
-                'info': currency,  # the original payload
+                'info': currency,
                 'active': active,
-                'deposit': None,
-                'withdraw': None,
                 'fee': None,
-                'precision': self.parse_number(self.parse_precision(self.safe_string(currency, 'decimal_places'))),
+                'precision': precision,
                 'limits': {
                     'amount': {'min': None, 'max': None},
-                    'withdraw': {'min': None, 'max': None},
+                    'withdraw': {'min': min_withdraw_amount, 'max': None},
                 },
             }
         return result
-
-    def parse_ticker(self, ticker, market=None):
-        #
-        # fetchTicker, fetchTickers
-        #
-        #     {
-        #         "pair":"BTC_USDC",
-        #         "last_price":"10850.02",
-        #         "low":"10720.03",
-        #         "high":"10909.99",
-        #         "variation":"1.21",
-        #         "volume":"0.83868",
-        #         "base":"BTC",
-        #         "base_name":"Bitcoin",
-        #         "quote":"USDC",
-        #         "quote_name":"USD Coin",
-        #         "bid":"10811.00",
-        #         "ask":"10720.03",
-        #         "avg":"10851.47",
-        #         "ask_volume":"0.00140",
-        #         "bid_volume":"0.00185",
-        #         "created_at":"2020-09-28 21:44:51.228920+00:00"
-        #     }
-        #
-        timestamp = self.parse8601(self.safe_string(ticker, 'created_at'))
-        marketId = self.safe_string(ticker, 'pair')
-        market = self.safe_market(marketId, market, '_')
-        symbol = market['symbol']
-        last = self.safe_string(ticker, 'last_price')
-        average = self.safe_string(ticker, 'avg')
-        return self.safe_ticker({
-            'symbol': symbol,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-            'high': self.safe_string(ticker, 'high'),
-            'low': self.safe_string(ticker, 'low'),
-            'bid': self.safe_string(ticker, 'bid'),
-            'bidVolume': self.safe_string(ticker, 'bid_volume'),
-            'ask': self.safe_string(ticker, 'ask'),
-            'askVolume': self.safe_string(ticker, 'ask_volume'),
-            'vwap': None,
-            'open': None,
-            'close': last,
-            'last': last,
-            'previousClose': None,
-            'change': None,
-            'percentage': None,
-            'average': average,
-            'baseVolume': None,
-            'quoteVolume': None,
-            'info': ticker,
-        }, market)
 
     def fetch_ticker(self, symbol: str, params={}):
         """
@@ -378,184 +308,156 @@ class ripio(Exchange):
         :param dict params: extra parameters specific to the ripio api endpoint
         :returns dict: a `ticker structure <https://docs.ccxt.com/#/?id=ticker-structure>`
         """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchTicker() requires a symbol argument')
         self.load_markets()
-        market = self.market(symbol)
+        symbol = self.symbol(symbol)
         request = {
-            'pair': market['id'],
+            'pair': self.market_id(symbol),
         }
-        response = self.publicGetRatePair(self.extend(request, params))
+        response = self.publicGetTickersPair(self.extend(request, params))
         #
         #     {
-        #         "pair":"BTC_USDC",
-        #         "last_price":"10850.02",
-        #         "low":"10720.03",
-        #         "high":"10909.99",
-        #         "variation":"1.21",
-        #         "volume":"0.83868",
-        #         "base":"BTC",
-        #         "base_name":"Bitcoin",
-        #         "quote":"USDC",
-        #         "quote_name":"USD Coin",
-        #         "bid":"10811.00",
-        #         "ask":"10720.03",
-        #         "avg":"10851.47",
-        #         "ask_volume":"0.00140",
-        #         "bid_volume":"0.00185",
-        #         "created_at":"2020-09-28 21:44:51.228920+00:00"
+        #         "message": null,
+        #         "data": {
+        #             "ask": 95629,
+        #             "base_code": "BTC",
+        #             "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+        #             "bid": 94171,
+        #             "date": "2022-11-11T01:31:35.820Z",
+        #             "high": 98444,
+        #             "is_frozen": False,
+        #             "last": 94311,
+        #             "low": 85034,
+        #             "pair": "BTC_BRL",
+        #             "price_change_percent_24h": "-12",
+        #             "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+        #             "quote_code": "BRL",
+        #             "quote_volume": 150.1,
+        #             "trades_quantity": 1199,
+        #             "volume": 27.26776846
+        #         }
         #     }
         #
-        return self.parse_ticker(response, market)
+        ripioTicker = self.safe_value(response, 'data', {})
+        ticker = self.parse_ticker(ripioTicker, symbol)
+        return ticker
 
     def fetch_tickers(self, symbols: Optional[List[str]] = None, params={}):
         """
         fetches price tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
-        :param [str]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
-        :param dict params: extra parameters specific to the ripio api endpoint
+        :param [str]|None symbols: not used by ripio fetchTickers
+        :param dict params: not used by ripio fetchTickers
         :returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
         """
         self.load_markets()
-        symbols = self.market_symbols(symbols)
-        response = self.publicGetRateAll(params)
+        response = self.publicGetTickers()
         #
-        #     [
-        #         {
-        #             "pair":"BTC_USDC",
-        #             "last_price":"10850.02",
-        #             "low":"10720.03",
-        #             "high":"10909.99",
-        #             "variation":"1.21",
-        #             "volume":"0.83868",
-        #             "base":"BTC",
-        #             "base_name":"Bitcoin",
-        #             "quote":"USDC",
-        #             "quote_name":"USD Coin",
-        #             "bid":"10811.00",
-        #             "ask":"10720.03",
-        #             "avg":"10851.47",
-        #             "ask_volume":"0.00140",
-        #             "bid_volume":"0.00185",
-        #             "created_at":"2020-09-28 21:44:51.228920+00:00"
-        #         }
-        #     ]
+        #     {
+        #         "message": null,
+        #         "data": [
+        #             {
+        #                 "ask": 250000.15,
+        #                 "base_code": "BTC",
+        #                 "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+        #                 "bid": 240000.15,
+        #                 "date": "2017-10-20T00:00:00Z",
+        #                 "high": 250000.15,
+        #                 "is_frozen": False,
+        #                 "last": 245000.15,
+        #                 "low": 200000.15,
+        #                 "pair": "BTC_BRL",
+        #                 "price_change_percent_24h": "-12",
+        #                 "quote_code": "BRL",
+        #                 "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+        #                 "quote_volume": 150.1,
+        #                 "trades_quantity": 123,
+        #                 "volume": 123.12345678
+        #             },
+        #         ]
+        #     }
         #
-        result = {}
-        for i in range(0, len(response)):
-            ticker = self.parse_ticker(response[i])
-            symbol = ticker['symbol']
-            result[symbol] = ticker
-        return self.filter_by_array(result, 'symbol', symbols)
+        ripioTickers = self.safe_value(response, 'data', [])
+        tickers = {}
+        ripioTickersLength = len(ripioTickers)
+        for i in range(0, ripioTickersLength):
+            ticker = ripioTickers[i]
+            parsedTicker = self.parse_ticker(ticker)
+            tickers[parsedTicker['symbol']] = parsedTicker
+        return tickers
 
     def fetch_order_book(self, symbol: str, limit: Optional[int] = None, params={}):
         """
         fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
         :param str symbol: unified symbol of the market to fetch the order book for
-        :param int|None limit: the maximum amount of order book entries to return
+        :param int|None limit: not used by ripio fetchOrderBook
         :param dict params: extra parameters specific to the ripio api endpoint
-        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
+        :returns dict: a dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
         """
         self.load_markets()
-        market = self.market(symbol)
-        request = {
-            'pair': market['id'],
-        }
-        response = self.publicGetOrderbookPair(self.extend(request, params))
+        symbol = self.symbol(symbol)
+        params = self.extend(params, {'pair': self.market_id(symbol)})
+        response = self.publicGetOrdersLevel3(params)
         #
         #     {
-        #         "buy":[
-        #             {"amount":"0.00230","total":"24.95","price":"10850.02"},
-        #             {"amount":"0.07920","total":"858.52","price":"10840.00"},
-        #             {"amount":"0.00277","total":"30.00","price":"10833.03"},
-        #         ],
-        #         "sell":[
-        #             {"amount":"0.03193","total":"348.16","price":"10904.00"},
-        #             {"amount":"0.00210","total":"22.90","price":"10905.70"},
-        #             {"amount":"0.00300","total":"32.72","price":"10907.98"},
-        #         ],
-        #         "updated_id":47225
+        #         "message": null,
+        #         "data": {
+        #             "timestamp": 1675708481219,
+        #             "asks": [
+        #                 {
+        #                     "amount": 0.01187517,
+        #                     "id": "554F2D70-04B9-4E26-9548-9C35B025A018",
+        #                     "price": 14704.45
+        #                 },
+        #             ],
+        #             "bids": [
+        #                 {
+        #                     "amount": 0.46097295,
+        #                     "id": "E6D05F51-D79B-47CF-84C5-B157120EBC25",
+        #                     "price": 14650.25
+        #                 },
+        #             ]
+        #         }
         #     }
         #
-        orderbook = self.parse_order_book(response, market['symbol'], None, 'buy', 'sell', 'price', 'amount')
-        orderbook['nonce'] = self.safe_integer(response, 'updated_id')
+        timestamp = self.safe_integer(response, 'timestamp')
+        orderbook = self.parse_order_book(response['data'], symbol, timestamp, 'bids', 'asks', 'price', 'amount')
         return orderbook
 
-    def parse_trade(self, trade, market=None):
-        #
-        #
-        # fetchTrades(public)
-        #
-        #      {
-        #          "created_at":1649899167,
-        #          "amount":"0.00852",
-        #          "price":"3106.000000",
-        #          "side":"SELL",
-        #          "pair":"ETH_USDC",
-        #          "taker_fee":"0",
-        #          "taker_side":"SELL",
-        #          "maker_fee":"0"
-        #      }
-        #
-        #
-        # fetchMyTrades(private)
+    def fetch_l2_order_book(self, symbol: str, limit: Optional[int] = None, params={}):
+        """
+        fetches level 2 information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int|None limit: not used by ripio fetchL2OrderBook
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns dict: a dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
+        """
+        self.load_markets()
+        symbol = self.symbol(symbol)
+        params = self.extend(params, {'pair': self.market_id(symbol)})
+        response = self.publicGetOrdersLevel2(params)
         #
         #     {
-        #         "created_at":1601322501,
-        #         "amount":"0.00276",
-        #         "price":"10850.020000",
-        #         "side":"SELL",
-        #         "pair":"BTC_USDC",
-        #         "taker_fee":"0",
-        #         "taker_side":"SELL",
-        #         "maker_fee":"0",
-        #         "taker":2577953,
-        #         "maker":2577937
+        #         "data": {
+        #             "asks": [
+        #                 {
+        #                     "amount": 1,
+        #                     "price": 10322
+        #                 },
+        #             ],
+        #             "bids": [
+        #                 {
+        #                     "amount": 1.4550699999999999,
+        #                     "price": 10273
+        #                 },
+        #             ],
+        #             "timestamp": 1681738465751
+        #         },
+        #         "message": null
         #     }
         #
-        # createOrder fills
-        #
-        #     {
-        #         "pair":"BTC_USDC",
-        #         "exchanged":0.002,
-        #         "match_price":10593.99,
-        #         "maker_fee":0.0,
-        #         "taker_fee":0.0,
-        #         "timestamp":1601730306942
-        #     }
-        #
-        id = self.safe_string(trade, 'id')
-        timestamp = self.safe_integer(trade, 'timestamp')
-        timestamp = self.safe_timestamp(trade, 'created_at', timestamp)
-        side = self.safe_string(trade, 'side')
-        takerSide = self.safe_string(trade, 'taker_side')
-        takerOrMaker = 'taker' if (takerSide == side) else 'maker'
-        if side is not None:
-            side = side.lower()
-        priceString = self.safe_string_2(trade, 'price', 'match_price')
-        amountString = self.safe_string_2(trade, 'amount', 'exchanged')
-        marketId = self.safe_string(trade, 'pair')
-        market = self.safe_market(marketId, market)
-        feeCostString = self.safe_string(trade, takerOrMaker + '_fee')
-        orderId = self.safe_string(trade, takerOrMaker)
-        fee = None
-        if feeCostString is not None:
-            fee = {
-                'cost': feeCostString,
-                'currency': market['base'] if (side == 'buy') else market['quote'],
-            }
-        return self.safe_trade({
-            'id': id,
-            'order': orderId,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-            'symbol': market['symbol'],
-            'type': None,
-            'side': side,
-            'price': priceString,
-            'amount': amountString,
-            'cost': None,
-            'takerOrMaker': takerOrMaker,
-            'fee': fee,
-            'info': trade,
-        }, market)
+        orderbook = self.parse_order_book(response['data'], symbol, None, 'bids', 'asks', 'price', 'amount')
+        return orderbook
 
     def fetch_trades(self, symbol: str, since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
@@ -567,93 +469,43 @@ class ripio(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
         """
         self.load_markets()
+        symbol = self.symbol(symbol)
         market = self.market(symbol)
-        request = {
-            'pair': market['id'],
-        }
-        response = self.publicGetTradehistoryPair(self.extend(request, params))
-        #
-        #      [
-        #          {
-        #              "created_at":1649899167,
-        #              "amount":"0.00852",
-        #              "price":"3106.000000",
-        #              "side":"SELL",
-        #              "pair":"ETH_USDC",
-        #              "taker_fee":"0",
-        #              "taker_side":"SELL",
-        #              "maker_fee":"0"
-        #          }
-        #      ]
-        #
-        return self.parse_trades(response, market, since, limit)
-
-    def fetch_trading_fees(self, params={}):
-        """
-        fetch the trading fees for multiple markets
-        :param dict params: extra parameters specific to the ripio api endpoint
-        :returns dict: a dictionary of `fee structures <https://docs.ccxt.com/#/?id=fee-structure>` indexed by market symbols
-        """
-        self.load_markets()
-        response = self.publicGetPair(params)
+        params = self.extend(params, {'pair': self.market_id(symbol)})
+        response = self.publicGetTrades(params)
         #
         #     {
-        #         next: null,
-        #         previous: null,
-        #         results: [
-        #             {
-        #                 base: 'BTC',
-        #                 base_name: 'Bitcoin',
-        #                 quote: 'USDC',
-        #                 quote_name: 'USD Coin',
-        #                 symbol: 'BTC_USDC',
-        #                 fees: [
-        #                     {
-        #                         traded_volume: '0.0',
-        #                         maker_fee: '0.0',
-        #                         taker_fee: '0.0',
-        #                         cancellation_fee: '0.0'
-        #                     }
-        #                 ],
-        #                 country: 'ZZ',
-        #                 enabled: True,
-        #                 priority: '10',
-        #                 min_amount: '0.0000100000',
-        #                 price_tick: '0.000001',
-        #                 min_value: '10',
-        #                 limit_price_threshold: '25.00'
+        #         "data": {
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "page_size": 200,
+        #                 "registers_count": 71840,
+        #                 "total_pages": 360
         #             },
-        #         ]
+        #             "trades": [
+        #                 {
+        #                     "amount": 0.02559772,
+        #                     "date": "2023-04-17T13:47:29.483Z",
+        #                     "id": "CC3A6AD4-C0F8-4E3D-A864-08111B1B3E1A",
+        #                     "maker_order_id": "B0C92B05-8278-4482-AB56-8585A20A4366",
+        #                     "maker_side": "sell",
+        #                     "maker_type": "limit",
+        #                     "pair": "BTC_BRL",
+        #                     "price": 146849,
+        #                     "taker_order_id": "46D112BB-5180-4F14-B2BF-B63E06D68F44",
+        #                     "taker_side": "buy",
+        #                     "taker_type": "market",
+        #                     "timestamp": 1681739809450,
+        #                     "total_value": 3758
+        #                 },
+        #             ]
+        #         },
+        #         "message": null
         #     }
         #
-        results = self.safe_value(response, 'results', [])
-        result = {}
-        for i in range(0, len(results)):
-            pair = results[i]
-            marketId = self.safe_string(pair, 'symbol')
-            symbol = self.safe_symbol(marketId, None, '_')
-            fees = self.safe_value(pair, 'fees', [])
-            fee = self.safe_value(fees, 0, {})
-            result[symbol] = {
-                'info': pair,
-                'symbol': symbol,
-                'maker': self.safe_number(fee, 'maker_fee'),
-                'taker': self.safe_number(fee, 'taker_fee'),
-                'tierBased': False,
-            }
-        return result
-
-    def parse_balance(self, response):
-        result = {'info': response}
-        for i in range(0, len(response)):
-            balance = response[i]
-            currencyId = self.safe_string(balance, 'symbol')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'available')
-            account['used'] = self.safe_string(balance, 'locked')
-            result[code] = account
-        return self.safe_balance(result)
+        data = self.safe_value(response, 'data')
+        trades = self.safe_value(data, 'trades')
+        return self.parse_trades(trades, market, since, limit)
 
     def fetch_balance(self, params={}):
         """
@@ -662,23 +514,35 @@ class ripio(Exchange):
         :returns dict: a `balance structure <https://docs.ccxt.com/en/latest/manual.html?#balance-structure>`
         """
         self.load_markets()
-        response = self.privateGetBalancesExchangeBalances(params)
+        response = self.privateGetUserBalances(params)
         #
-        #     [
-        #         {
-        #             "id":603794,
-        #             "currency":"USD Coin",
-        #             "symbol":"USDC",
-        #             "available":"0",
-        #             "locked":"0",
-        #             "code":"exchange",
-        #             "balance_type":"crypto"
-        #         },
-        #     ]
+        #     {
+        #         "data": [
+        #             {
+        #                 "currency_code": "BTC",
+        #                 "available_amount": 0.00047545,
+        #                 "locked_amount": 0,
+        #                 "last_update": "2023-02-22T15:22:36.647Z"
+        #             },
+        #         ],
+        #         "message": null,
+        #         "timestamp": 1681740098156
+        #     }
         #
-        return self.parse_balance(response)
+        result = {'info': response}
+        data = self.safe_value(response, 'data')
+        for i in range(0, len(data)):
+            balance = data[i]
+            currencyId = self.safe_string(balance, 'currency_code')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_number(balance, 'available_amount')
+            account['used'] = self.safe_number(balance, 'locked_amount')
+            account['total'] = self.safe_number(balance, 'available_amount') + self.safe_number(balance, 'locked_amount')
+            result[code] = account
+        return self.safe_balance(result)
 
-    def create_order(self, symbol: str, type, side: OrderSide, amount, price=None, params={}):
+    def create_order(self, symbol: str, type: str, side: OrderSide, amount, price=None, params={}):
         """
         create a trade order
         :param str symbol: unified symbol of the market to create an order in
@@ -690,371 +554,819 @@ class ripio(Exchange):
         :returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
         """
         self.load_markets()
-        market = self.market(symbol)
-        uppercaseType = type.upper()
-        uppercaseSide = side.upper()
+        symbol = self.symbol(symbol)
         request = {
-            'pair': market['id'],
-            'order_type': uppercaseType,  # LIMIT, MARKET
-            'side': uppercaseSide,  # BUY or SELL
-            'amount': self.amount_to_precision(symbol, amount),
+            'pair': self.market_id(symbol),
+            'type': type,
+            'side': side,
+            'amount': self.parse_number(amount),
         }
-        if uppercaseType == 'LIMIT':
-            request['limit_price'] = self.price_to_precision(symbol, price)
-        response = self.privatePostOrderPair(self.extend(request, params))
+        if type == 'limit':
+            request['price'] = self.parse_number(price)
+        response = self.privatePostOrders(self.extend(request, params))
         #
         #     {
-        #         "order_id": "160f523c-f6ef-4cd1-a7c9-1a8ede1468d8",
-        #         "pair": "BTC_ARS",
-        #         "side": "BUY",
-        #         "amount": "0.00400",
-        #         "notional": null,
-        #         "fill_or_kill": False,
-        #         "all_or_none": False,
-        #         "order_type": "LIMIT",
-        #         "status": "OPEN",
-        #         "created_at": 1578413945,
-        #         "filled": "0.00000",
-        #         "limit_price": "10.00",
-        #         "stop_price": null,
-        #         "distance": null
+        #         "message": null,
+        #         "data": {
+        #             "id": "7155ED34-9EC4-4733-8B32-1E4319CB662F"
+        #         }
         #     }
         #
-        # createOrder market type
-        #
-        #     {
-        #         "order_id":"d6b60c01-8624-44f2-9e6c-9e8cd677ea5c",
-        #         "pair":"BTC_USDC",
-        #         "side":"BUY",
-        #         "amount":"0.00200",
-        #         "notional":"50",
-        #         "fill_or_kill":false,
-        #         "all_or_none":false,
-        #         "order_type":"MARKET",
-        #         "status":"OPEN",
-        #         "created_at":1601730306,
-        #         "filled":"0.00000",
-        #         "fill_price":10593.99,
-        #         "fee":0.0,
-        #         "fills":[
-        #             {
-        #                 "pair":"BTC_USDC",
-        #                 "exchanged":0.002,
-        #                 "match_price":10593.99,
-        #                 "maker_fee":0.0,
-        #                 "taker_fee":0.0,
-        #                 "timestamp":1601730306942
-        #             }
-        #         ],
-        #         "filled_at":"2020-10-03T13:05:06.942186Z",
-        #         "limit_price":"0.000000",
-        #         "stop_price":null,
-        #         "distance":null
-        #     }
-        #
-        return self.parse_order(response, market)
+        return response['data']['id']
 
     def cancel_order(self, id: str, symbol: Optional[str] = None, params={}):
         """
         cancels an open order
         :param str id: order id
-        :param str symbol: unified symbol of the market the order was made in
+        :param str|None symbol: not used by ripio cancelOrder()
         :param dict params: extra parameters specific to the ripio api endpoint
         :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
         """
-        if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
         self.load_markets()
-        market = self.market(symbol)
-        request = {
-            'pair': market['id'],
-            'order_id': id,
-        }
-        response = self.privatePostOrderPairOrderIdCancel(self.extend(request, params))
+        request = {'id': id}
+        response = self.privateDeleteOrders(self.extend(request, params))
         #
         #     {
-        #         "order_id": "286e560e-b8a2-464b-8b84-15a7e2a67eab",
-        #         "pair": "BTC_ARS",
-        #         "side": "SELL",
-        #         "amount": "0.00100",
-        #         "notional": null,
-        #         "fill_or_kill": False,
-        #         "all_or_none": False,
-        #         "order_type": "LIMIT",
-        #         "status": "CANC",
-        #         "created_at": 1575472707,
-        #         "filled": "0.00000",
-        #         "limit_price": "681000.00",
-        #         "stop_price": null,
-        #         "distance": null
+        #         "message": null,
+        #         "data": {
+        #             "create_date": "2017-12-08T23:42:54.960Z",
+        #             "executed_amount": 0.02347418,
+        #             "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #             "id": "7155ED34-9EC4-4733-8B32-1E4319CB662F",
+        #             "pair": "BTC_BRL",
+        #             "price": 42600,
+        #             "remaining_amount": 0.1,
+        #             "remaining_value": 0.6,
+        #             "requested_amount": 0.02347418,
+        #             "side": "buy",
+        #             "status": "canceled",
+        #             "total_value": 1000,
+        #             "type": "limit",
+        #             "update_date": "2017-12-13T21:48:48.817Z"
+        #         }
         #     }
         #
-        return self.parse_order(response, market)
+        data = self.safe_value(response, 'data')
+        if symbol is not None:
+            symbol = self.symbol(symbol)
+        else:
+            pair = self.safe_value(data, 'pair')
+            symbol = self.symbol(pair)
+        market = self.market(symbol)
+        return self.parse_order(data, market)
 
     def fetch_order(self, id: str, symbol: Optional[str] = None, params={}):
         """
         fetches information on an order made by the user
-        :param str symbol: unified symbol of the market the order was made in
+        :param str|None symbol: unified market symbol that the order was made in
         :param dict params: extra parameters specific to the ripio api endpoint
-        :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        :returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
         """
-        if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
         self.load_markets()
-        market = self.market(symbol)
-        request = {
-            'pair': market['id'],
-            'order_id': id,
-        }
-        response = self.privateGetOrderPairOrderId(self.extend(request, params))
+        request = {'id': id}
+        response = self.privateGetOrdersId(self.extend(request, params))
         #
         #     {
-        #         "order_id": "0b4ff48e-cfd6-42db-8d8c-3b536da447af",
-        #         "pair": "BTC_ARS",
-        #         "side": "BUY",
-        #         "amount": "0.00100",
-        #         "notional": null,
-        #         "fill_or_kill": False,
-        #         "all_or_none": False,
-        #         "order_type": "LIMIT",
-        #         "status": "OPEN",
-        #         "created_at": 1575472944,
-        #         "filled": "0.00000",
-        #         "limit_price": "661000.00",
-        #         "stop_price": null,
-        #         "distance": null
+        #         "message": null,
+        #         "data": {
+        #             "average_execution_price": 42600,
+        #             "create_date": "2017-12-08T23:42:54.960Z",
+        #             "external_id": "C90796F2-2CC3-4797-9AC3-A16BCC6936F0",
+        #             "executed_amount": 0.02347418,
+        #             "id": "8DE12108-4643-4E9F-8425-0172F1B96876",
+        #             "remaining_amount": 0,
+        #             "requested_amount": 0.02347418,
+        #             "remaining_value": 0,
+        #             "pair": "BTC_BRL",
+        #             "price": 42600,
+        #             "side": "buy",
+        #             "status": "executed_completely",
+        #             "tax_amount": 0.002,
+        #             "total_value": 1000,
+        #             "type": "limit",
+        #             "update_date": "2017-12-13T21:48:48.817Z",
+        #             "transactions": [
+        #                 {
+        #                     "amount": 0.2,
+        #                     "create_date": "2020-02-21 20:24:43.433",
+        #                     "fee": 0.12,
+        #                     "fee_currency": "BTC",
+        #                     "price": 5000,
+        #                     "total_value": 1000
+        #                 },
+        #                 {
+        #                     "amount": 0.2,
+        #                     "create_date": "2020-02-21 20:49:37.450",
+        #                     "fee": 0.12,
+        #                     "fee_currency": "BTC",
+        #                     "price": 5000,
+        #                     "total_value": 1000
+        #                 }
+        #             ]
+        #         }
         #     }
         #
-        return self.parse_order(response, market)
+        data = self.safe_value(response, 'data')
+        if symbol is not None:
+            symbol = self.symbol(symbol)
+        else:
+            pair = self.safe_value(data, 'pair')
+            symbol = self.symbol(pair)
+        market = self.market(symbol)
+        return self.parse_order(data, market)
 
     def fetch_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
         fetches information on multiple orders made by the user
-        :param str symbol: unified market symbol of the market orders were made in
-        :param int|None since: the earliest time in ms to fetch orders for
-        :param int|None limit: the maximum number of  orde structures to retrieve
+        :param str|None symbol: unified market symbol that the orders were made in
+        :param int|None since: the earliest time in ms to fetch orders
+        :param int|None limit: the maximum number of order structures to retrieve
         :param dict params: extra parameters specific to the ripio api endpoint
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
         """
         if symbol is None:
             raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+        symbol = self.symbol(symbol)
         self.load_markets()
-        market = self.market(symbol)
         request = {
-            'pair': market['id'],
-            # 'status': 'OPEN,PART,CLOS,CANC,COMP',
-            # 'offset': 0,
-            # 'limit': limit,
+            'pair': self.market_id(symbol),
         }
         if limit is not None:
-            request['offset'] = limit
-        response = self.privateGetOrderPair(self.extend(request, params))
+            request['page_size'] = limit
+        side = self.safe_string(params, 'side', None)
+        if side:
+            request['side'] = side
+        status = self.safe_string(params, 'status', None)
+        if status:
+            request['status'] = status
+        response = self.privateGetOrders(self.extend(request, params))
         #
         #     {
-        #         "next": "https://api.exchange.ripio.com/api/v1/order/BTC_ARS/?limit=20&offset=20&page=1&page_size=25&status=OPEN%2CPART",
-        #         "previous": null,
-        #         "results": {
-        #             "data": [
+        #         "message": null,
+        #         "data": {
+        #             "orders": [
         #                 {
-        #                     "order_id": "ca74280b-6966-4b73-a720-68709078922b",
-        #                     "pair": "BTC_ARS",
-        #                     "side": "SELL",
-        #                     "amount": "0.00100",
-        #                     "notional": null,
-        #                     "fill_or_kill": False,
-        #                     "all_or_none": False,
-        #                     "order_type": "LIMIT",
-        #                     "status": "OPEN",
-        #                     "created_at": 1578340134,
-        #                     "filled": "0.00000",
-        #                     "limit_price": "665000.00",
-        #                     "stop_price": null,
-        #                     "distance": null
+        #                     "create_date": "2017-12-08T23:42:54.960Z",
+        #                     "executed_amount": 0.02347418,
+        #                     "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #                     "id": "857C0A3B-D70F-4256-9051-1C62FADBA8FA",
+        #                     "pair": "BTC_BRL",
+        #                     "price": 42600,
+        #                     "remaining_amount": 0,
+        #                     "remaining_value": 0,
+        #                     "requested_amount": 0.02347418,
+        #                     "side": "buy",
+        #                     "status": "executed_completely",
+        #                     "total_value": 1000,
+        #                     "type": "limit",
+        #                     "update_date": "2017-12-13T21:48:48.817Z"
         #                 },
-        #             ]
+        #             ],
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "registers_count": 21,
+        #                 "total_pages": 1,
+        #                 "page_size": 100
+        #             }
         #         }
         #     }
         #
-        results = self.safe_value(response, 'results', {})
-        data = self.safe_value(results, 'data', [])
-        return self.parse_orders(data, market, since, limit)
-
-    def fetch_open_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
-        """
-        fetch all unfilled currently open orders
-        :param str symbol: unified market symbol
-        :param int|None since: the earliest time in ms to fetch open orders for
-        :param int|None limit: the maximum number of  open orders structures to retrieve
-        :param dict params: extra parameters specific to the ripio api endpoint
-        :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
-        """
-        request = {
-            'status': 'OPEN,PART',
-        }
-        return self.fetch_orders(symbol, since, limit, self.extend(request, params))
-
-    def fetch_closed_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
-        """
-        fetches information on multiple closed orders made by the user
-        :param str symbol: unified market symbol of the market orders were made in
-        :param int|None since: the earliest time in ms to fetch orders for
-        :param int|None limit: the maximum number of  orde structures to retrieve
-        :param dict params: extra parameters specific to the ripio api endpoint
-        :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
-        """
-        request = {
-            'status': 'CLOS,CANC,COMP',
-        }
-        return self.fetch_orders(symbol, since, limit, self.extend(request, params))
-
-    def parse_order_status(self, status):
-        statuses = {
-            'OPEN': 'open',
-            'PART': 'open',
-            'CLOS': 'canceled',
-            'CANC': 'canceled',
-            'COMP': 'closed',
-        }
-        return self.safe_string(statuses, status, status)
-
-    def parse_order(self, order, market=None):
-        #
-        # createOrder, cancelOrder, fetchOpenOrders, fetchClosedOrders, fetchOrders, fetchOrder
-        #
-        #     {
-        #         "order_id": "286e560e-b8a2-464b-8b84-15a7e2a67eab",
-        #         "pair": "BTC_ARS",
-        #         "side": "SELL",
-        #         "amount": "0.00100",
-        #         "notional": null,
-        #         "fill_or_kill": False,
-        #         "all_or_none": False,
-        #         "order_type": "LIMIT",
-        #         "status": "CANC",
-        #         "created_at": 1575472707,
-        #         "filled": "0.00000",
-        #         "limit_price": "681000.00",
-        #         "stop_price": null,
-        #         "distance": null
-        #     }
-        #
-        #     {
-        #         "order_id": "d6b60c01-8624-44f2-9e6c-9e8cd677ea5c",
-        #         "pair": "BTC_USDC",
-        #         "side": "BUY",
-        #         "amount": "0.00200",
-        #         "notional": "50",
-        #         "fill_or_kill": False,
-        #         "all_or_none": False,
-        #         "order_type": "MARKET",
-        #         "status": "OPEN",
-        #         "created_at": 1601730306,
-        #         "filled": "0.00000",
-        #         "fill_price": 10593.99,
-        #         "fee": 0.0,
-        #         "fills": [
-        #             {
-        #                 "pair": "BTC_USDC",
-        #                 "exchanged": 0.002,
-        #                 "match_price": 10593.99,
-        #                 "maker_fee": 0.0,
-        #                 "taker_fee": 0.0,
-        #                 "timestamp": 1601730306942
-        #             }
-        #         ],
-        #         "filled_at": "2020-10-03T13:05:06.942186Z",
-        #         "limit_price": "0.000000",
-        #         "stop_price": null,
-        #         "distance": null
-        #     }
-        #
-        id = self.safe_string(order, 'order_id')
-        amount = self.safe_string(order, 'amount')
-        cost = self.safe_string(order, 'notional')
-        type = self.safe_string_lower(order, 'order_type')
-        priceField = 'fill_price' if (type == 'market') else 'limit_price'
-        price = self.safe_string(order, priceField)
-        side = self.safe_string_lower(order, 'side')
-        status = self.parse_order_status(self.safe_string(order, 'status'))
-        timestamp = self.safe_timestamp(order, 'created_at')
-        average = self.safe_string(order, 'fill_price')
-        filled = self.safe_string(order, 'filled')
-        fills = self.safe_value(order, 'fills')
-        marketId = self.safe_string(order, 'pair')
-        return self.safe_order({
-            'info': order,
-            'id': id,
-            'clientOrderId': None,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-            'lastTradeTimestamp': None,
-            'symbol': self.safe_symbol(marketId, market, '_'),
-            'type': type,
-            'timeInForce': None,
-            'postOnly': None,
-            'side': side,
-            'price': price,
-            'stopPrice': self.safe_string(order, 'stop_price'),
-            'triggerPrice': self.safe_string(order, 'stop_price'),
-            'amount': amount,
-            'cost': cost,
-            'average': average,
-            'filled': filled,
-            'remaining': None,
-            'status': status,
-            'fee': None,
-            'trades': fills,
-        }, market)
+        data = self.safe_value(response, 'data', {})
+        orders = self.safe_value(data, 'orders', [])
+        market = self.market(symbol)
+        return self.parse_orders(orders, market, since, limit)
 
     def fetch_my_trades(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
         fetch all trades made by the user
-        :param str symbol: unified market symbol
+        :param str|None symbol: unified market symbol
         :param int|None since: the earliest time in ms to fetch trades for
         :param int|None limit: the maximum number of trades structures to retrieve
         :param dict params: extra parameters specific to the ripio api endpoint
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/#/?id=trade-structure>`
         """
-        if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
         self.load_markets()
-        market = self.market(symbol)
-        request = {
-            'pair': market['id'],
-            # 'offset': 0,
-            # 'limit': limit,
-        }
+        request = {}
+        market = None
+        if symbol is not None:
+            symbol = self.symbol(symbol)
+            market = self.market(symbol)
+            request['pair'] = self.market_id(symbol)
         if limit is not None:
-            request['limit'] = limit
-        response = self.privateGetTradePair(self.extend(request, params))
+            request['page_size'] = limit
+        response = self.privateGetUserTrades(self.extend(request, params))
         #
         #     {
-        #         "next": "https://api.exchange.ripio.com/api/v1/trade/<pair>/?limit=20&offset=20",
-        #         "previous": null,
-        #         "results": {
-        #             "data": [
+        #         "message": null,
+        #         "data": {
+        #             "trades": [
         #                 {
-        #                     "created_at": 1578414028,
-        #                     "amount": "0.00100",
-        #                     "price": "665000.00",
-        #                     "side": "BUY",
-        #                     "taker_fee": "0",
-        #                     "taker_side": "BUY",
-        #                     "match_price": "66500000",
-        #                     "maker_fee": "0",
-        #                     "taker": 4892,
-        #                     "maker": 4889
+        #                     "amount": 0.00270754,
+        #                     "date": "2019-04-02T11:22:22.403Z",
+        #                     "fee": 0.25,
+        #                     "fee_currency": "USDC",
+        #                     "id": "488F9395-47ED-4924-98AB-C860E1733A03",
+        #                     "pair_code": "BTC_USDC",
+        #                     "price": 18550,
+        #                     "side": "sell",
+        #                     "timestamp": 1675708481219,
+        #                     "type": "market",
+        #                     "total_value": 50.22
         #                 },
-        #             ]
+        #             ],
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "registers_count": 21,
+        #                 "total_pages": 1,
+        #                 "page_size": 100
+        #             }
         #         }
         #     }
         #
-        results = self.safe_value(response, 'results', {})
-        data = self.safe_value(results, 'data', [])
-        return self.parse_trades(data, market, since, limit)
+        data = self.safe_value(response, 'data', {})
+        trades = self.safe_value(data, 'trades', [])
+        return self.parse_trades(trades, market, since, limit)
+
+    def fetch_open_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        fetch all unfilled currently open orders
+        :param str|None symbol: unified market symbol
+        :param int|None since: the earliest time in ms to fetch open orders for
+        :param int|None limit: the maximum number of  open orders structures to retrieve
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
+        self.load_markets()
+        request = {}
+        market = None
+        if symbol is not None:
+            symbol = self.symbol(symbol)
+            market = self.market(symbol)
+            request['pair'] = self.market_id(symbol)
+        if limit is not None:
+            request['page_size'] = limit
+        side = self.safe_string(params, 'side', None)
+        if side is not None:
+            request['side'] = side
+        response = self.privateGetOrdersOpen(self.extend(request, params))
+        #
+        #     {
+        #         "message": null,
+        #         "data": {
+        #             "orders": [
+        #                 {
+        #                     "create_date": "2017-12-08T23:42:54.960Z",
+        #                     "executed_amount": 0.02347418,
+        #                     "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #                     "id": "857C0A3B-D70F-4256-9051-1C62FADBA8FA",
+        #                     "pair": "BTC_BRL",
+        #                     "price": 42600,
+        #                     "remaining_amount": 0,
+        #                     "remaining_value": 0,
+        #                     "requested_amount": 0.02347418,
+        #                     "side": "buy",
+        #                     "status": "executed_completely",
+        #                     "total_value": 1000,
+        #                     "type": "limit",
+        #                     "update_date": "2017-12-13T21:48:48.817Z"
+        #                 },
+        #             ],
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "registers_count": 21,
+        #                 "total_pages": 1,
+        #                 "page_size": 100
+        #             }
+        #         }
+        #     }
+        #
+        data = self.safe_value(response, 'data', {})
+        orders = self.safe_value(data, 'orders', [])
+        return self.parse_orders(orders, market, since, limit)
+
+    def fetch_closed_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        fetches information on multiple closed orders made by the user
+        :param str|None symbol: unified market symbol of the orders
+        :param int|None since: timestamp in ms of the earliest order, default is None
+        :param int|None limit: the maximum number of closed order structures to retrieve
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchClosedOrders() requires a symbol argument')
+        symbol = self.symbol(symbol)
+        request = {
+            'status': ['executed_completely', 'canceled'],
+        }
+        orders = self.fetch_orders(symbol, since, limit, self.extend(request, params))
+        #
+        #     {
+        #         "message": null,
+        #         "data": {
+        #             "orders": [
+        #                 {
+        #                     "create_date": "2017-12-08T23:42:54.960Z",
+        #                     "executed_amount": 0.02347418,
+        #                     "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #                     "id": "857C0A3B-D70F-4256-9051-1C62FADBA8FA",
+        #                     "pair": "BTC_BRL",
+        #                     "price": 42600,
+        #                     "remaining_amount": 0,
+        #                     "remaining_value": 0,
+        #                     "requested_amount": 0.02347418,
+        #                     "side": "buy",
+        #                     "status": "executed_completely",
+        #                     "total_value": 1000,
+        #                     "type": "limit",
+        #                     "update_date": "2017-12-13T21:48:48.817Z"
+        #                 },
+        #             ],
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "registers_count": 21,
+        #                 "total_pages": 1,
+        #                 "page_size": 100
+        #             }
+        #         }
+        #     }
+        #
+        return orders
+
+    def fetch_canceled_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        fetches information on multiple canceled orders made by the user
+        :param str symbol: unified market symbol of the orders
+        :param int|None since: timestamp in ms of the earliest order, default is None
+        :param int|None limit: the maximum number of canceled order structures to retrieve
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns dict: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchCanceledOrders() requires a symbol argument')
+        symbol = self.symbol(symbol)
+        request = {
+            'status': ['canceled'],
+        }
+        orders = self.fetch_orders(symbol, since, limit, self.extend(request, params))
+        #
+        #     {
+        #         "message": null,
+        #         "data": {
+        #             "orders": [
+        #                 {
+        #                     "create_date": "2017-12-08T23:42:54.960Z",
+        #                     "executed_amount": 0,
+        #                     "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #                     "id": "857C0A3B-D70F-4256-9051-1C62FADBA8FA",
+        #                     "pair": "BTC_BRL",
+        #                     "price": 42600,
+        #                     "remaining_amount": 0.02347418,
+        #                     "remaining_value": 0,
+        #                     "requested_amount": 0.02347418,
+        #                     "side": "buy",
+        #                     "status": "canceled",
+        #                     "total_value": 1000,
+        #                     "type": "limit",
+        #                     "update_date": "2017-12-13T21:48:48.817Z"
+        #                 },
+        #             ],
+        #             "pagination": {
+        #                 "current_page": 1,
+        #                 "registers_count": 21,
+        #                 "total_pages": 1,
+        #                 "page_size": 100
+        #             }
+        #         }
+        #     }
+        #
+        return orders
+
+    def withdraw(self, code: str, amount, address, tag=None, params={}):
+        """
+        make a withdrawal
+        :param str code: unified currency code
+        :param float amount: the amount to withdraw
+        :param str address: the address to withdraw to
+        :param str|None tag:
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns dict: a `transaction structure <https://docs.ccxt.com/#/?id=transaction-structure>`
+        """
+        tag, params = self.handle_withdraw_tag_and_params(tag, params)
+        self.check_address(address)
+        self.load_markets()
+        currency = self.currency(code)
+        feeType = self.safe_string(params, 'fee_type', 'regular')
+        request = {
+            'currency_code': currency['code'],
+            'fee_type': feeType,
+            'amount': amount,
+            'destination': address,
+        }
+        if tag is not None:
+            request['tag'] = tag
+        memo = self.safe_string(params, 'memo')
+        if memo is not None:
+            request['memo'] = memo
+        # TODO(pgold): add network parameter.
+        response = self.privatePostWithdrawals(self.extend(request, params))
+        data = self.safe_value(response, 'data')
+        #
+        #     {
+        #         "data": {
+        #             "amount": "1000",
+        #             "create_date": "2023-07-13T15:54:27.710Z",
+        #             "currency_code": "CREAL",
+        #             "destination_address": " 0xEeA875a27ad44F6f4608097cFcb8c2417A235A41",
+        #             "id": "idwxr8yoV",
+        #             "link": null,
+        #             "miner_fee": "0.1",
+        #             "miner_fee_type": "regular",
+        #             "network": "celo",
+        #             "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        #             "status": "pending",
+        #             "tax_amount": "0",
+        #             "tax_index": "0",
+        #             "tax_index_calculated": "0",
+        #             "transaction_id": null,
+        #             "update_date": "2023-07-11T12:22:34.590Z"
+        #         },
+        #         "message": null
+        #     }
+        #
+        return self.parse_transaction(data, currency)
+
+    def fetch_web_socket_ticket(self):
+        """
+        fetches a ticket so the user can connect to ripio's websocket private topics
+        :returns str: a websocket ticket
+        """
+        self.load_markets()
+        response = self.privatePostTicket()
+        #
+        #     {
+        #         "message": null,
+        #         "data": {
+        #             "ticket": "D90A9A10-06AF-44AF-8592-BAF866DD1503"
+        #         }
+        #     }
+        #
+        data = self.safe_value(response, 'data')
+        ticket = self.safe_string(data, 'ticket')
+        return ticket
+
+    def parse_ticker(self, ticker, symbol=None):
+        #
+        # fetchTicker(public), fetchTickers(public)
+        #
+        #      {
+        #          "ask": 250000.15,
+        #          "base_code": "BTC",
+        #          "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+        #          "bid": 240000.15,
+        #          "date": "2017-10-20T00:00:00Z",
+        #          "high": 250000.15,
+        #          "is_frozen": False,
+        #          "last": 245000.15,
+        #          "low": 200000.15,
+        #          "pair": "BTC_BRL",
+        #          "price_change_percent_24h": "-12",
+        #          "quote_code": "BRL",
+        #          "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+        #          "quote_volume": 150.1,
+        #          "trades_quantity": 123,
+        #          "volume": 123.12345678
+        #      }
+        #
+        timestamp = self.parse_date(self.safe_string(ticker, 'date'))
+        last = self.safe_number(ticker, 'last')
+        pair = self.safe_string(ticker, 'pair')
+        if symbol is None and pair is not None:
+            symbol = self.symbol(pair)
+        return self.safe_ticker({
+            'symbol': symbol,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+            'high': self.safe_string(ticker, 'high'),
+            'low': self.safe_string(ticker, 'low'),
+            'bid': self.safe_string(ticker, 'bid'),
+            'bidVolume': None,
+            'ask': self.safe_string(ticker, 'ask'),
+            'askVolume': None,
+            'vwap': None,
+            'open': None,
+            'close': last,
+            'last': last,
+            'previousClose': None,
+            'change': None,
+            'percentage': self.safe_string(ticker, 'price_change_percent_24h'),
+            'average': None,
+            'baseVolume': self.safe_string(ticker, 'volume'),
+            'quoteVolume': self.safe_string(ticker, 'quote_volume'),
+            'info': ticker,
+        })
+
+    def parse_trade(self, trade, market=None):
+        #
+        # fetchTrades(public)
+        #
+        #      {
+        #          "amount": 0.2404764,
+        #          "date": "2019-01-03T02:27:33.947Z",
+        #          "id": "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+        #          "maker_order_id": "F49F5BD8-3F5B-4364-BCEE-F36F62DB966A",
+        #          "maker_side": "buy",
+        #          "maker_type": "limit",
+        #          "price": 15160,
+        #          "taker_order_id": "FEAB5CEC-7F9E-4F95-B67D-9E8D5C739BE3",
+        #          "taker_side": "sell",
+        #          "taker_type": "market",
+        #          "timestamp": 1675708481219,
+        #          "total_value": 3638.4
+        #      }
+        #
+        # fetchMyTrades(private)
+        #
+        #      {
+        #          "amount": 0.00270754,
+        #          "date": "2019-04-02T11:22:22.403Z",
+        #          "fee": 0.25,
+        #          "fee_currency": "USDC",
+        #          "id": "488F9395-47ED-4924-98AB-C860E1733A03",
+        #          "pair_code": "BTC_USDC",
+        #          "price": 18550,
+        #          "side": "sell",
+        #          "timestamp": 1675708481219,
+        #          "type": "market",
+        #          "total_value": 50.22
+        #      }
+        #
+        timestamp = self.parse_date(self.safe_string(trade, 'date'))
+        id = self.safe_string(trade, 'id')
+        side = self.safe_string_lower(trade, 'side')
+        if side is None:
+            side = self.safe_string(trade, 'taker_side')
+        takerOrMaker = self.safe_string(trade, 'taker_or_maker')
+        if takerOrMaker is None:
+            takerOrMaker = 'taker'
+        price = self.safe_string(trade, 'price')
+        amount = self.safe_string(trade, 'amount')
+        fee = None
+        pairCode = self.safe_string(trade, 'pair_code')
+        pair = self.safe_string(trade, 'pair')
+        symbol = self.safe_string(market, 'symbol')
+        if symbol is not None:
+            symbol = self.symbol(symbol)
+        elif pair is not None:
+            symbol = self.symbol(pair)
+        elif pairCode is not None:
+            symbol = self.symbol(pairCode)
+        if market is None and symbol is not None:
+            market = self.market(symbol)
+        order = self.safe_string(trade, 'taker_order_id')
+        type = self.safe_string(trade, 'type')
+        if type is None:
+            type = self.safe_string(trade, 'taker_type')
+        return self.safe_trade({
+            'id': id,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+            'type': type,
+            'side': side,
+            'price': price,
+            'amount': amount,
+            'cost': None,
+            'takerOrMaker': takerOrMaker,
+            'fee': fee,
+            'info': trade,
+            'symbol': symbol,
+            'order': order,
+        }, market)
+
+    def parse_order_status(self, status: str):
+        statuses = {
+            'executed_completely': 'closed',
+            'executed_partially': 'open',
+            'waiting': 'open',
+            'canceled': 'canceled',
+            'pending_creation': 'pending creation',
+        }
+        return self.safe_string(statuses, status, status)
+
+    def parse_order(self, order, market=None):
+        #
+        # fetchOrder(private)
+        #
+        #      {
+        #          "average_execution_price": 42600,
+        #          "create_date": "2017-12-08T23:42:54.960Z",
+        #          "external_id": "C90796F2-2CC3-4797-9AC3-A16BCC6936F0",
+        #          "executed_amount": 0.02347418,
+        #          "id": "8DE12108-4643-4E9F-8425-0172F1B96876",
+        #          "remaining_amount": 0,
+        #          "requested_amount": 0.02347418,
+        #          "remaining_value": 0,
+        #          "pair": "BTC_BRL",
+        #          "price": 42600,
+        #          "side": "buy",
+        #          "status": "executed_completely",
+        #          "tax_amount": 0.002,
+        #          "total_value": 1000,
+        #          "type": "limit",
+        #          "update_date": "2017-12-13T21:48:48.817Z",
+        #          "transactions": [
+        #              {
+        #                  "amount": 0.2,
+        #                  "create_date": "2020-02-21 20:24:43.433",
+        #                  "fee": 0.12,
+        #                  "fee_currency": "BTC",
+        #                  "price": 5000,
+        #                  "total_value": 1000
+        #              },
+        #              {
+        #                  "amount": 0.2,
+        #                  "create_date": "2020-02-21 20:49:37.450",
+        #                  "fee": 0.12,
+        #                  "fee_currency": "BTC",
+        #                  "price": 5000,
+        #                  "total_value": 1000
+        #              }
+        #          ]
+        #      }
+        #
+        # cancelOrder(private), fetchOrders(private), fetchOpenOrders(private), fetchClosedOrders(private), fetchCanceledOrders(private)
+        #
+        #      {
+        #          "create_date": "2017-12-08T23:42:54.960Z",
+        #          "executed_amount": 0.02347418,
+        #          "external_id": "B4A9F7F4-9C79-4921-9330-224C17260BDF",
+        #          "id": "7155ED34-9EC4-4733-8B32-1E4319CB662F",
+        #          "pair": "BTC_BRL",
+        #          "price": 42600,
+        #          "remaining_amount": 0.1,
+        #          "remaining_value": 0.6,
+        #          "requested_amount": 0.02347418,
+        #          "side": "buy",
+        #          "status": "canceled",
+        #          "total_value": 1000,
+        #          "type": "limit",
+        #          "update_date": "2017-12-13T21:48:48.817Z"
+        #      }
+        #
+        id = self.safe_string(order, 'id')
+        clientOrderId = self.safe_string(order, 'external_id')
+        amount = self.safe_number(order, 'requested_amount')
+        type = self.safe_string_lower(order, 'type')
+        price = self.safe_number(order, 'price')
+        side = self.safe_string_lower(order, 'side')
+        status = self.parse_order_status(self.safe_string(order, 'status'))
+        timestamp = self.parse_date(self.safe_string(order, 'create_date'))
+        average = None
+        filled = self.safe_number(order, 'executed_amount')
+        cost = self.parse_number(Precise.string_mul(self.safe_string(order, 'price'), self.safe_string(order, 'executed_amount')))
+        trades = None
+        lastTradeTimestamp = None
+        if filled > 0:
+            lastTradeTimestamp = self.parse_date(self.safe_string(order, 'update_date'))
+        remaining = self.safe_number(order, 'remaining_amount')
+        symbol = None
+        pair = self.safe_string(order, 'pair')
+        if pair is not None:
+            symbol = self.symbol(pair)
+        if market is None and symbol is not None:
+            market = self.market(symbol)
+        return self.safe_order({
+            'id': id,
+            'clientOrderId': clientOrderId,
+            'info': order,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+            'lastTradeTimestamp': lastTradeTimestamp,
+            'symbol': symbol,
+            'type': type,
+            'timeInForce': None,
+            'postOnly': None,
+            'side': side,
+            'price': price,
+            'stopPrice': None,
+            'triggerPrice': None,
+            'amount': amount,
+            'cost': cost,
+            'average': average,
+            'filled': filled,
+            'remaining': remaining,
+            'status': status,
+            'fee': None,
+            'trades': trades,
+        }, market)
+
+    def parse_transaction_status(self, status):
+        statuses = {
+            'pending': 'pending',
+            'confirmed': 'ok',
+            'canceled': 'failed',
+        }
+        return self.safe_string(statuses, status, status)
+
+    def parse_transaction(self, transaction, currency=None):
+        # TODO(pgold): fetchWithdrawals and fetchDeposits do not match.
+        #
+        # withdraw
+        #
+        #     {
+        #         "amount": "1000",
+        #         "create_date": "2023-07-13T15:54:27.710Z",
+        #         "currency_code": "CREAL",
+        #         "destination_address": " 0xEeA875a27ad44F6f4608097cFcb8c2417A235A41",
+        #         "id": "idwxr8yoV",
+        #         "link": null,
+        #         "miner_fee": "0.1",
+        #         "miner_fee_type": "regular",
+        #         "network": "celo",
+        #         "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        #         "status": "pending",
+        #         "tax_amount": "0",
+        #         "tax_index": "0",
+        #         "tax_index_calculated": "0",
+        #         "transaction_id": null,
+        #         "update_date": "2023-07-11T12:22:34.590Z"
+        #     },
+        #
+        # fetchWithdrawals
+        #
+        #     {
+        #         "amount": 5000,
+        #         "code": "eY_ZNjWJ8",
+        #         "create_date": "2022-08-31T18:19:59.312Z",
+        #         "currency_code": "CREAL",
+        #         "destination_address": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        #         "is_internal": False,
+        #         "link": null,
+        #         "miner_fee": 0.1,
+        #         "miner_fee_type": "regular",
+        #         "network": "celo",
+        #         "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        #         "status": "confirmed",
+        #         "tax_amount": 0,
+        #         "tax_index": 0,
+        #         "tax_index_calculated": 0,
+        #         "transaction_id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        #         "update_date": "2022-08-31T19:01:01.420Z"
+        #     }
+        #
+        # fetchDeposits
+        #
+        #     {
+        #         "amount": 458.81,
+        #         "code": "Zet_q-K42",
+        #         "confirmation_date": "2022-08-02T11:25:32.457Z",
+        #         "create_date": "2022-08-02T11:24:28.332Z",
+        #         "currency_code": "CREAL",
+        #         "hash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        #         "is_internal": False,
+        #         "network": "celo",
+        #         "status": "confirmed"
+        #     }
+        #
+        id = self.safe_string(transaction, 'id')
+        amount = self.safe_number(transaction, 'amount')
+        addressTo = self.safe_string(transaction, 'origin_address')
+        addressFrom = self.safe_string(transaction, 'destination_address')
+        txid = self.safe_string_2(transaction, 'transaction_id', 'hash')
+        create_datetime = self.safe_string(transaction, 'create_date')
+        update_datetime = self.safe_string_2(transaction, 'update_date', 'confirmation_date')
+        currencyId = self.safe_string(transaction, 'currency_code')
+        code = self.safe_currency_code(currencyId, currency)
+        status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
+        network = self.safe_string(transaction, 'network')
+        tag = self.safe_string(transaction, 'tag')
+        feeCost = self.safe_number(transaction, 'miner_fee')
+        fee = None
+        if feeCost is not None:
+            fee = {'currency': code, 'cost': feeCost}
+        return {
+            'info': transaction,
+            'id': id,
+            'currency': code,
+            'amount': amount,
+            'network': network,
+            'address': None,
+            'addressTo': addressTo,
+            'addressFrom': addressFrom,
+            'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
+            'status': status,
+            'type': None,
+            'updated': self.parse8601(update_datetime),
+            'txid': txid,
+            'timestamp': self.parse8601(create_datetime),
+            'datetime': create_datetime,
+            'fee': fee,
+        }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.version + '/' + self.implode_params(path, params)
+        request = '/' + self.implode_params(path, params)
         url = self.urls['api'][api] + request
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
@@ -1062,41 +1374,23 @@ class ripio(Exchange):
                 url += '?' + self.urlencode(query)
         elif api == 'private':
             self.check_required_credentials()
-            if method == 'POST':
+            if method == 'POST' or method == 'DELETE':
                 body = self.json(query)
             else:
                 if query:
                     url += '?' + self.urlencode(query)
             headers = {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + self.apiKey,
+                'Authorization': self.apiKey,
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
-            return None
-        #
-        #      {"detail":"Authentication credentials were not provided."}
-        #      {"status_code":400,"errors":{"pair":["Invalid pair FOOBAR"]},"message":"An error has occurred, please check the form."}
-        #      {"status_code":400,"errors":{"order_type":["Invalid order type. Valid options: ['MARKET', 'LIMIT']"]},"message":"An error has occurred, please check the form."}
-        #      {"status_code":400,"errors":{"non_field_errors":"Something unexpected ocurred!"},"message":"Seems like an unexpected error occurred. Please try again later or write us to support@ripio.com if the problem persists."}
-        #      {"status_code":400,"errors":{"pair":["Invalid/Disabled pair BTC_ARS"]},"message":"An error has occurred, please check the form."}
-        #
-        detail = self.safe_string(response, 'detail')
-        if detail is not None:
+            return
+        if (code >= 400) and (code <= 503):
             feedback = self.id + ' ' + body
-            # self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
-            self.throw_broadly_matched_exception(self.exceptions['broad'], detail, feedback)
-        errors = self.safe_value(response, 'errors')
-        if errors is not None:
-            feedback = self.id + ' ' + body
-            keys = list(errors.keys())
-            for i in range(0, len(keys)):
-                key = keys[i]
-                error = self.safe_value(errors, key, [])
-                message = self.safe_string(error, 0)
-                # self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
-                self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
-            raise ExchangeError(feedback)  # unknown message
-        return None
+            message = self.safe_string(response, 'message')
+            self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
+            status = str(code)
+            self.throw_exactly_matched_exception(self.exceptions['exact'], status, feedback)

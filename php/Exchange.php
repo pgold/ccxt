@@ -427,6 +427,7 @@ class Exchange {
         'poloniex',
         'poloniexfutures',
         'probit',
+        'ripio',
         'stex',
         'tidex',
         'timex',

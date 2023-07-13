@@ -5,9 +5,9 @@
 
 import ccxt.async_support
 from ccxt.async_support.base.ws.cache import ArrayCache
-import json
 from ccxt.async_support.base.ws.client import Client
 from typing import Optional
+from ccxt.base.errors import ArgumentsRequired
 
 
 class ripio(ccxt.async_support.ripio):
@@ -19,10 +19,13 @@ class ripio(ccxt.async_support.ripio):
                 'watchOrderBook': True,
                 'watchTrades': True,
                 'watchTicker': True,
+                'watchBalance': True,
+                'watchMyTrades': True,
+                'watchOrders': True,
             },
             'urls': {
                 'api': {
-                    'ws': 'wss://api.exchange.ripio.com/ws/v2/consumer/non-persistent/public/default/',
+                    'ws': 'wss://ws.ripiotrade.co/',
                 },
             },
             'options': {
@@ -32,54 +35,332 @@ class ripio(ccxt.async_support.ripio):
         })
 
     async def watch_trades(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        get the list of most recent trades for a particular symbol
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int|None since: timestamp in ms of the earliest trade to fetch
+        :param int|None limit: the maximum amount of trades to fetch
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
+        """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' watchTicker() requires a symbol argument')
         await self.load_markets()
+        symbol = self.symbol(symbol)
         market = self.market(symbol)
-        symbol = market['symbol']
-        name = 'trades'
-        messageHash = name + '_' + market['id'].lower()
-        url = self.urls['api']['ws'] + messageHash + '/' + self.options['uuid']
+        marketId = self.market_id(symbol)
+        name = 'trade@' + marketId
+        messageHash = market['id'].lower()
+        url = self.urls['api']['ws']
         subscription = {
-            'name': name,
+            'topics': [name],
+            'method': 'subscribe',
             'symbol': symbol,
             'messageHash': messageHash,
-            'method': self.handle_trade,
+            'methodToCall': self.handle_trade,
         }
-        trades = await self.watch(url, messageHash, None, messageHash, subscription)
+        trades = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "trade@ETH_BRL",
+        #         "timestamp": 1672856503549,
+        #         "body": {
+        #             "amount": 0.2404764,
+        #             "date": "2019-01-03T02:27:33.947Z",
+        #             "id": "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+        #             "maker_order_id": "F49F5BD8-3F5B-4364-BCEE-F36F62DB966A",
+        #             "maker_side": "buy",
+        #             "maker_type": "limit",
+        #             "pair": "ETH_BRL",
+        #             "price": 15160,
+        #             "taker_order_id": "FEAB5CEC-7F9E-4F95-B67D-9E8D5C739BE3",
+        #             "taker_side": "sell",
+        #             "taker_type": "market",
+        #             "timestamp": 1675780847920,
+        #             "total_value": 3638.4
+        #         }
+        #     }
+        #
         if self.newUpdates:
             limit = trades.getLimit(symbol, limit)
-        return self.filter_by_since_limit(trades, since, limit, 'timestamp', True)
+        return self.filter_by_since_limit(trades, since, limit, 'timestamp')
+
+    async def watch_ticker(self, symbol: Optional[str] = None, params={}):
+        """
+        watches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict params: not used by ripio watchTicker
+        :returns dict: a `ticker structure <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' watchTicker() requires a symbol argument')
+        await self.load_markets()
+        symbol = self.symbol(symbol)
+        market = self.market(symbol)
+        marketId = self.market_id(symbol)
+        name = 'ticker@' + marketId
+        messageHash = market['id'].lower()
+        url = self.urls['api']['ws']
+        subscription = {
+            'topics': [name],
+            'method': 'subscribe',
+            'symbol': symbol,
+            'messageHash': messageHash,
+            'methodToCall': self.handle_ticker,
+        }
+        ticker = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "ticker@ETH_BRL",
+        #         "timestamp": 1672856683447,
+        #         "body": {
+        #             "ask": 4.01,
+        #             "base_code": "ETH",
+        #             "base_id": "13A4B83B-E74F-425C-BC0A-03A9C0F29FAD",
+        #             "bid": 5,
+        #             "date": "2022-09-28T19:13:40.887Z",
+        #             "high": 20,
+        #             "last": 20,
+        #             "low": 20,
+        #             "pair": "ETH_BRL",
+        #             "price_change_percent_24h": "-16.66",
+        #             "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+        #             "quote_code": "BRL",
+        #             "quote_volume": 600,
+        #             "trades_quantity": 10,
+        #             "volume": 124
+        #         }
+        #     }
+        #
+        return ticker
+
+    async def watch_order_book(self, symbol: Optional[str] = None, limit: Optional[int] = None, params={}):
+        """
+        watches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int|None limit: not used by ripio watchOrderBook
+        :param dict params: extra parameters specific to the ripio api endpoint
+        :param str|None params['level']: orderbook level to be used, level_2 or level_3(if a valid level is not sent, the level_2 will be used by default)
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
+        """
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' watchOrderBook() requires a symbol argument')
+        await self.load_markets()
+        symbol = self.symbol(symbol)
+        market = self.market(symbol)
+        marketId = self.market_id(symbol)
+        level = self.safe_string(params, 'level')
+        if level != 'level_2' and level != 'level_3':
+            level = 'level_2'
+        name = 'orderbook/' + level + '@' + marketId
+        messageHash = market['id'].lower()
+        url = self.urls['api']['ws']
+        subscription = {
+            'topics': [name],
+            'method': 'subscribe',
+            'symbol': symbol,
+            'messageHash': messageHash,
+            'methodToCall': self.handle_order_book,
+        }
+        orderbook = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "orderbook/level_2@ETH_BRL",
+        #         "timestamp": 1672856653428,
+        #         "body": {
+        #             "asks": [
+        #                 {
+        #                     "amount": 10,
+        #                     "price": 25
+        #                 }
+        #             ],
+        #             "bids": [
+        #                 {
+        #                     "amount": 20,
+        #                     "price": 4
+        #                 }
+        #             ],
+        #             "pair": "ETH_BRL"
+        #         }
+        #     }
+        #
+        return orderbook
+
+    async def watch_balance(self, params={}):
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+        :param dict params: not used by ripio watchBalance
+        :returns dict: a `balance structure <https://docs.ccxt.com/en/latest/manual.html?#balance-structure>`
+        """
+        await self.load_markets()
+        name = 'balance'
+        messageHash = name
+        url = self.urls['api']['ws']
+        ticket = await self.fetchWebSocketTicket()
+        subscription = {
+            'topics': [name],
+            'method': 'subscribe',
+            'ticket': ticket,
+            'messageHash': messageHash,
+            'methodToCall': self.handle_balance,
+        }
+        balance = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "balance",
+        #         "timestamp": 1672856833684,
+        #         "body": {
+        #             "user_id": "299E7131-CE8C-422F-A1CF-497BFA116F89",
+        #             "balances": [
+        #                 {
+        #                     "available_amount": 3,
+        #                     "currency_code": "ETH",
+        #                     "locked_amount": 1
+        #                 }
+        #             ]
+        #         }
+        #     }
+        #
+        return balance
+
+    async def watch_my_trades(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        watches information on multiple trades made by the user
+        :param str symbol: not used by ripio watchMyTrades
+        :param int|None since: not used by ripio watchMyTrades
+        :param int|None limit: not used by ripio watchMyTrades
+        :param dict params: not used by ripio watchMyTrades
+        :returns [dict]: a list of [order structures]{@link https://docs.ccxt.com/#/?id=order-structure
+        """
+        await self.load_markets()
+        name = 'user_trades'
+        messageHash = name
+        url = self.urls['api']['ws']
+        ticket = await self.fetchWebSocketTicket()
+        subscription = {
+            'topics': [name],
+            'method': 'subscribe',
+            'ticket': ticket,
+            'messageHash': messageHash,
+            'methodToCall': self.handle_trade,
+        }
+        trades = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "user_trades",
+        #         "timestamp": 1673271591764,
+        #         "body": {
+        #             "trade": {
+        #                 "amount": 1,
+        #                 "date": "2023-01-09T13:39:24.057Z",
+        #                 "fee": 0,
+        #                 "fee_currency": "BCH",
+        #                 "id": "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+        #                 "pair_code": "BCH_BRL",
+        #                 "price": 49,
+        #                 "side": "buy",
+        #                 "taker_or_maker": "taker",
+        #                 "timestamp": 1675780847920,
+        #                 "total_value": 49,
+        #                 "type": "limit"
+        #             },
+        #             "user_id": "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+        #         }
+        #     }
+        #
+        return trades
+
+    async def watch_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
+        """
+        watches information on multiple orders made by the user
+        :param str|None symbol: not used by ripio watchOrders
+        :param int|None since: not used by ripio watchOrders
+        :param int|None limit: not used by ripio watchOrders
+        :param dict params: not used by ripio watchOrders
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
+        await self.load_markets()
+        name = 'order_status'
+        messageHash = name
+        url = self.urls['api']['ws']
+        ticket = await self.fetchWebSocketTicket()
+        subscription = {
+            'topics': [name],
+            'method': 'subscribe',
+            'ticket': ticket,
+            'messageHash': messageHash,
+            'methodToCall': self.parse_order,
+        }
+        order = await self.watch(url, messageHash, subscription, messageHash, subscription)
+        #
+        #     {
+        #         "topic": "order_status",
+        #         "timestamp": 1672856713677,
+        #         "body": {
+        #             "amount": 4,
+        #             "average_execution_price": 6,
+        #             "id": "F55E4E01-C39B-4AA7-848B-1C6A362C386E",
+        #             "created_at": "2023-01-24T17:28:32.247Z",
+        #             "executed_amount": 4,
+        #             "external_id": null,
+        #             "pair": "ETH_BRL",
+        #             "price": 6,
+        #             "remaining_amount": 0,
+        #             "side": "buy",
+        #             "status": "executed_completely",
+        #             "type": "limit",
+        #             "updated_at": "2023-01-24T17:28:33.993Z",
+        #             "user_id": "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+        #         }
+        #     }
+        #
+        return order
 
     def handle_trade(self, client: Client, message, subscription):
         #
-        #     {
-        #         messageId: 'CAAQAA==',
-        #         payload: 'eyJjcmVhdGVkX2F0IjogMTYwMTczNjI0NywgImFtb3VudCI6ICIwLjAwMjAwIiwgInByaWNlIjogIjEwNTkzLjk5MDAwMCIsICJzaWRlIjogIkJVWSIsICJwYWlyIjogIkJUQ19VU0RDIiwgInRha2VyX2ZlZSI6ICIwIiwgInRha2VyX3NpZGUiOiAiQlVZIiwgIm1ha2VyX2ZlZSI6ICIwIiwgInRha2VyIjogMjYxODU2NCwgIm1ha2VyIjogMjYxODU1N30=',
-        #         properties: {},
-        #         publishTime: '2020-10-03T14:44:09.881Z'
-        #     }
+        # watchTrades(public)
         #
-        payload = self.safe_string(message, 'payload')
+        #      {
+        #          "amount": 0.2404764,
+        #          "date": "2019-01-03T02:27:33.947Z",
+        #          "id": "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+        #          "maker_order_id": "F49F5BD8-3F5B-4364-BCEE-F36F62DB966A",
+        #          "maker_side": "buy",
+        #          "maker_type": "limit",
+        #          "pair": "ETH_BRL",
+        #          "price": 15160,
+        #          "taker_order_id": "FEAB5CEC-7F9E-4F95-B67D-9E8D5C739BE3",
+        #          "taker_side": "sell",
+        #          "taker_type": "market",
+        #          "timestamp": 1675780847920,
+        #          "total_value": 3638.4
+        #      }
+        #
+        # watchMyTrades(private)
+        #
+        #      {
+        #          "amount": 1,
+        #          "date": "2023-01-09T13:39:24.057Z",
+        #          "fee": 0,
+        #          "fee_currency": "BCH",
+        #          "id": "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+        #          "pair_code": "BCH_BRL",
+        #          "price": 49,
+        #          "side": "buy",
+        #          "taker_or_maker": "taker",
+        #          "timestamp": 1675780847920,
+        #          "total_value": 49,
+        #          "type": "limit"
+        #      }
+        #
+        payload = self.safe_value(message, 'body')
         if payload is None:
             return message
-        data = json.loads(self.base64_to_string(payload))
-        #
-        #     {
-        #         created_at: 1601736247,
-        #         amount: '0.00200',
-        #         price: '10593.990000',
-        #         side: 'BUY',
-        #         pair: 'BTC_USDC',
-        #         taker_fee: '0',
-        #         taker_side: 'BUY',
-        #         maker_fee: '0',
-        #         taker: 2618564,
-        #         maker: 2618557
-        #     }
-        #
         symbol = self.safe_string(subscription, 'symbol')
+        symbol = self.symbol(symbol)
         messageHash = self.safe_string(subscription, 'messageHash')
         market = self.market(symbol)
-        trade = self.parse_trade(data, market)
+        trade = self.parse_trade(payload, market)
         tradesArray = self.safe_value(self.trades, symbol)
         if tradesArray is None:
             limit = self.safe_integer(self.options, 'tradesLimit', 1000)
@@ -88,158 +369,105 @@ class ripio(ccxt.async_support.ripio):
         tradesArray.append(trade)
         client.resolve(tradesArray, messageHash)
 
-    async def watch_ticker(self, symbol: str, params={}):
-        """
-        watches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
-        :param str symbol: unified symbol of the market to fetch the ticker for
-        :param dict params: extra parameters specific to the ripio api endpoint
-        :returns dict: a `ticker structure <https://docs.ccxt.com/#/?id=ticker-structure>`
-        """
-        await self.load_markets()
-        market = self.market(symbol)
-        symbol = market['symbol']
-        name = 'rate'
-        messageHash = name + '_' + market['id'].lower()
-        url = self.urls['api']['ws'] + messageHash + '/' + self.options['uuid']
-        subscription = {
-            'name': name,
-            'symbol': symbol,
-            'messageHash': messageHash,
-            'method': self.handle_ticker,
-        }
-        return await self.watch(url, messageHash, None, messageHash, subscription)
-
     def handle_ticker(self, client: Client, message, subscription):
         #
-        #     {
-        #         messageId: 'CAAQAA==',
-        #         payload: 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wOTMxMiIsICJ0b3RhbCI6ICI4MzguMDgiLCAicHJpY2UiOiAiOTAwMC4wMCJ9XSwgInNlbGwiOiBbeyJhbW91bnQiOiAiMC4wMDAwMCIsICJ0b3RhbCI6ICIwLjAwIiwgInByaWNlIjogIjkwMDAuMDAifV0sICJ1cGRhdGVkX2lkIjogMTI0NDA0fQ==',
-        #         properties: {},
-        #         publishTime: '2020-10-03T10:05:09.445Z'
-        #     }
+        # watchTicker(public)
         #
-        payload = self.safe_string(message, 'payload')
+        #      {
+        #          "ask": 4.01,
+        #          "base_code": "ETH",
+        #          "base_id": "13A4B83B-E74F-425C-BC0A-03A9C0F29FAD",
+        #          "bid": 5,
+        #          "date": "2022-09-28T19:13:40.887Z",
+        #          "high": 20,
+        #          "last": 20,
+        #          "low": 20,
+        #          "pair": "ETH_BRL",
+        #          "price_change_percent_24h": "-16.66",
+        #          "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+        #          "quote_code": "BRL",
+        #          "quote_volume": 600,
+        #          "trades_quantity": 10,
+        #          "volume": 124
+        #      }
+        #
+        payload = self.safe_value(message, 'body')
         if payload is None:
             return message
-        data = json.loads(self.base64_to_string(payload))
-        #
-        #     {
-        #         "pair": "BTC_BRL",
-        #         "last_price": "68558.59",
-        #         "low": "54736.11",
-        #         "high": "70034.68",
-        #         "variation": "8.75",
-        #         "volume": "10.10537"
-        #     }
-        #
-        ticker = self.parse_ticker(data)
-        timestamp = self.parse8601(self.safe_string(message, 'publishTime'))
-        ticker['timestamp'] = timestamp
-        ticker['datetime'] = self.iso8601(timestamp)
-        symbol = ticker['symbol']
+        ticker = self.parse_ticker(payload)
+        symbol = self.safe_string(subscription, 'symbol')
+        symbol = self.symbol(symbol)
         self.tickers[symbol] = ticker
         messageHash = self.safe_string(subscription, 'messageHash')
         if messageHash is not None:
             client.resolve(ticker, messageHash)
         return message
 
-    async def watch_order_book(self, symbol: str, limit: Optional[int] = None, params={}):
-        """
-        watches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
-        :param str symbol: unified symbol of the market to fetch the order book for
-        :param int|None limit: the maximum amount of order book entries to return
-        :param dict params: extra parameters specific to the ripio api endpoint
-        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
-        """
-        await self.load_markets()
-        market = self.market(symbol)
-        symbol = market['symbol']
-        name = 'orderbook'
-        messageHash = name + '_' + market['id'].lower()
-        url = self.urls['api']['ws'] + messageHash + '/' + self.options['uuid']
-        client = self.client(url)
-        subscription = {
-            'name': name,
-            'symbol': symbol,
-            'messageHash': messageHash,
-            'method': self.handle_order_book,
-        }
-        if not (messageHash in client.subscriptions):
-            self.orderbooks[symbol] = self.order_book({})
-            client.subscriptions[messageHash] = subscription
-            options = self.safe_value(self.options, 'fetchOrderBookSnapshot', {})
-            delay = self.safe_integer(options, 'delay', self.rateLimit)
-            # fetch the snapshot in a separate async call after a warmup delay
-            self.delay(delay, self.fetch_order_book_snapshot, client, subscription)
-        orderbook = await self.watch(url, messageHash, None, messageHash, subscription)
-        return orderbook.limit()
-
-    async def fetch_order_book_snapshot(self, client, subscription):
-        symbol = self.safe_string(subscription, 'symbol')
-        messageHash = self.safe_string(subscription, 'messageHash')
-        try:
-            # todo: self is a synch blocking call in ccxt.php - make it async
-            snapshot = await self.fetch_order_book(symbol)
-            orderbook = self.orderbooks[symbol]
-            messages = orderbook.cache
-            orderbook.reset(snapshot)
-            # unroll the accumulated deltas
-            for i in range(0, len(messages)):
-                message = messages[i]
-                self.handle_order_book_message(client, message, orderbook)
-            self.orderbooks[symbol] = orderbook
-            client.resolve(orderbook, messageHash)
-        except Exception as e:
-            client.reject(e, messageHash)
-
     def handle_order_book(self, client: Client, message, subscription):
-        messageHash = self.safe_string(subscription, 'messageHash')
-        symbol = self.safe_string(subscription, 'symbol')
-        orderbook = self.safe_value(self.orderbooks, symbol)
-        if orderbook is None:
-            return message
-        if orderbook['nonce'] is None:
-            orderbook.cache.append(message)
-        else:
-            self.handle_order_book_message(client, message, orderbook)
-            client.resolve(orderbook, messageHash)
-        return message
-
-    def handle_order_book_message(self, client: Client, message, orderbook):
         #
-        #     {
-        #         messageId: 'CAAQAA==',
-        #         payload: 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wOTMxMiIsICJ0b3RhbCI6ICI4MzguMDgiLCAicHJpY2UiOiAiOTAwMC4wMCJ9XSwgInNlbGwiOiBbeyJhbW91bnQiOiAiMC4wMDAwMCIsICJ0b3RhbCI6ICIwLjAwIiwgInByaWNlIjogIjkwMDAuMDAifV0sICJ1cGRhdGVkX2lkIjogMTI0NDA0fQ==',
-        #         properties: {},
-        #         publishTime: '2020-10-03T10:05:09.445Z'
-        #     }
+        # watchOrderBook(public)
         #
-        payload = self.safe_string(message, 'payload')
+        #      {
+        #          "asks": [
+        #              {
+        #                  "amount": 10,
+        #                  "price": 25
+        #              }
+        #          ],
+        #          "bids": [
+        #              {
+        #                  "amount": 20,
+        #                  "price": 4
+        #              }
+        #          ],
+        #          "pair": "ETH_BRL"
+        #      }
+        #
+        payload = self.safe_value(message, 'body')
         if payload is None:
             return message
-        data = json.loads(self.base64_to_string(payload))
-        #
-        #     {
-        #         "buy": [
-        #             {"amount": "0.05000", "total": "532.77", "price": "10655.41"}
-        #         ],
-        #         "sell": [
-        #             {"amount": "0.00000", "total": "0.00", "price": "10655.41"}
-        #         ],
-        #         "updated_id": 99740
-        #     }
-        #
-        nonce = self.safe_integer(data, 'updated_id')
-        if nonce > orderbook['nonce']:
-            asks = self.safe_value(data, 'sell', [])
-            bids = self.safe_value(data, 'buy', [])
-            self.handle_deltas(orderbook['asks'], asks)
-            self.handle_deltas(orderbook['bids'], bids)
-            orderbook['nonce'] = nonce
-            timestamp = self.parse8601(self.safe_string(message, 'publishTime'))
-            orderbook['timestamp'] = timestamp
-            orderbook['datetime'] = self.iso8601(timestamp)
+        symbol = self.safe_string(subscription, 'symbol')
+        symbol = self.symbol(symbol)
+        timestamp = self.safe_integer(message, 'timestamp')
+        orderbook = self.parse_order_book(payload, symbol, timestamp, 'bids', 'asks', 'price', 'amount')
+        messageHash = self.safe_string(subscription, 'messageHash')
+        client.resolve(orderbook, messageHash)
         return orderbook
+
+    def handle_balance(self, client: Client, message, subscription):
+        #
+        # watchBalance(private)
+        #
+        #      {
+        #          "user_id": "299E7131-CE8C-422F-A1CF-497BFA116F89",
+        #          "balances": [
+        #              {
+        #                  "available_amount": 3,
+        #                  "currency_code": "ETH",
+        #                  "locked_amount": 1
+        #              }
+        #          ]
+        #      }
+        #
+        payload = self.safe_value(message, 'body')
+        if payload is None:
+            return message
+        messageHash = self.safe_string(subscription, 'messageHash')
+        balances = self.safe_value(payload, 'balances')
+        result = {}
+        for i in range(0, len(balances)):
+            balance = balances[i]
+            currencyId = self.safe_string(balance, 'currency_code')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_number(balance, 'available_amount')
+            account['used'] = self.safe_number(balance, 'locked_amount')
+            account['total'] = self.safe_number(balance, 'available_amount') + self.safe_number(balance, 'locked_amount')
+            result[code] = account
+        safeBalance = self.safe_balance(result)
+        if messageHash is not None:
+            client.resolve(safeBalance, messageHash)
+        return safeBalance
 
     def handle_delta(self, bookside, delta):
         price = self.safe_float(delta, 'price')
@@ -250,27 +478,11 @@ class ripio(ccxt.async_support.ripio):
         for i in range(0, len(deltas)):
             self.handle_delta(bookside, deltas[i])
 
-    async def ack(self, client, messageId):
-        # the exchange requires acknowledging each received message
-        await client.send({'messageId': messageId})
-
     def handle_message(self, client: Client, message):
-        #
-        #     {
-        #         messageId: 'CAAQAA==',
-        #         payload: 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wNTAwMCIsICJ0b3RhbCI6ICI1MzIuNzciLCAicHJpY2UiOiAiMTA2NTUuNDEifV0sICJzZWxsIjogW3siYW1vdW50IjogIjAuMDAwMDAiLCAidG90YWwiOiAiMC4wMCIsICJwcmljZSI6ICIxMDY1NS40MSJ9XSwgInVwZGF0ZWRfaWQiOiA5OTc0MH0=',
-        #         properties: {},
-        #         publishTime: '2020-09-30T17:35:27.851Z'
-        #     }
-        #
-        messageId = self.safe_string(message, 'messageId')
-        if messageId is not None:
-            # the exchange requires acknowledging each received message
-            self.spawn(self.ack, client, messageId)
         keys = list(client.subscriptions.keys())
         firstKey = self.safe_string(keys, 0)
         subscription = self.safe_value(client.subscriptions, firstKey, {})
-        method = self.safe_value(subscription, 'method')
-        if method is not None:
-            return method(client, message, subscription)
+        methodToCall = self.safe_value(subscription, 'methodToCall')
+        if methodToCall is not None:
+            return methodToCall(client, message, subscription)
         return message

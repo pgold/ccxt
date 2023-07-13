@@ -1,19 +1,39 @@
 import { implicitReturnType } from '../base/types.js';
 import { Exchange as _Exchange } from '../base/Exchange.js';
 interface Exchange {
-    publicGetRateAll(params?: {}): Promise<implicitReturnType>;
-    publicGetRatePair(params?: {}): Promise<implicitReturnType>;
-    publicGetOrderbookPair(params?: {}): Promise<implicitReturnType>;
-    publicGetTradehistoryPair(params?: {}): Promise<implicitReturnType>;
-    publicGetPair(params?: {}): Promise<implicitReturnType>;
-    publicGetCurrency(params?: {}): Promise<implicitReturnType>;
-    publicGetOrderbookPairDepth(params?: {}): Promise<implicitReturnType>;
-    privateGetBalancesExchangeBalances(params?: {}): Promise<implicitReturnType>;
-    privateGetOrderPairOrderId(params?: {}): Promise<implicitReturnType>;
-    privateGetOrderPair(params?: {}): Promise<implicitReturnType>;
-    privateGetTradePair(params?: {}): Promise<implicitReturnType>;
-    privatePostOrderPair(params?: {}): Promise<implicitReturnType>;
-    privatePostOrderPairOrderIdCancel(params?: {}): Promise<implicitReturnType>;
+    publicGetTickers(params?: {}): Promise<implicitReturnType>;
+    publicGetTickersPair(params?: {}): Promise<implicitReturnType>;
+    publicGetOrdersLevel3(params?: {}): Promise<implicitReturnType>;
+    publicGetOrdersLevel2(params?: {}): Promise<implicitReturnType>;
+    publicGetTrades(params?: {}): Promise<implicitReturnType>;
+    publicGetCurrencies(params?: {}): Promise<implicitReturnType>;
+    publicGetPairs(params?: {}): Promise<implicitReturnType>;
+    privateGetBookSummaries(params?: {}): Promise<implicitReturnType>;
+    privateGetBookEstimatePricePair(params?: {}): Promise<implicitReturnType>;
+    privateGetBookOrdersLevel3(params?: {}): Promise<implicitReturnType>;
+    privateGetBookOrdersLevel2(params?: {}): Promise<implicitReturnType>;
+    privateGetUserBalances(params?: {}): Promise<implicitReturnType>;
+    privateGetUserFeesAndLimits(params?: {}): Promise<implicitReturnType>;
+    privateGetUserStatement(params?: {}): Promise<implicitReturnType>;
+    privateGetUserStatementCurrencyCode(params?: {}): Promise<implicitReturnType>;
+    privateGetUserTrades(params?: {}): Promise<implicitReturnType>;
+    privateGetOrders(params?: {}): Promise<implicitReturnType>;
+    privateGetOrdersOpen(params?: {}): Promise<implicitReturnType>;
+    privateGetOrdersId(params?: {}): Promise<implicitReturnType>;
+    privateGetOrdersByExternalIdExternalId(params?: {}): Promise<implicitReturnType>;
+    privateGetDeposits(params?: {}): Promise<implicitReturnType>;
+    privateGetWithdrawals(params?: {}): Promise<implicitReturnType>;
+    privateGetWithdrawalsEstimateFeeCurrencyCode(params?: {}): Promise<implicitReturnType>;
+    privateGetWalletsIsInternal(params?: {}): Promise<implicitReturnType>;
+    privateGetWalletsBalance(params?: {}): Promise<implicitReturnType>;
+    privateGetWalletsBalanceDate(params?: {}): Promise<implicitReturnType>;
+    privatePostOrders(params?: {}): Promise<implicitReturnType>;
+    privatePostWithdrawals(params?: {}): Promise<implicitReturnType>;
+    privatePostTransactionsSync(params?: {}): Promise<implicitReturnType>;
+    privatePostTicket(params?: {}): Promise<implicitReturnType>;
+    privateDeleteOrders(params?: {}): Promise<implicitReturnType>;
+    privateDeleteOrdersByExternalId(params?: {}): Promise<implicitReturnType>;
+    privateDeleteOrdersAll(params?: {}): Promise<implicitReturnType>;
 }
 declare abstract class Exchange extends _Exchange {
 }

@@ -6,6 +6,7 @@ namespace ccxt\pro;
 // https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 use Exception; // a common import
+use ccxt\ArgumentsRequired;
 use React\Async;
 
 class ripio extends \ccxt\async\ripio {
@@ -17,10 +18,13 @@ class ripio extends \ccxt\async\ripio {
                 'watchOrderBook' => true,
                 'watchTrades' => true,
                 'watchTicker' => true,
+                'watchBalance' => true,
+                'watchMyTrades' => true,
+                'watchOrders' => true,
             ),
             'urls' => array(
                 'api' => array(
-                    'ws' => 'wss://api.exchange.ripio.com/ws/v2/consumer/non-persistent/public/default/',
+                    'ws' => 'wss://ws.ripiotrade.co/',
                 ),
             ),
             'options' => array(
@@ -32,58 +36,355 @@ class ripio extends \ccxt\async\ripio {
 
     public function watch_trades(?string $symbol = null, ?int $since = null, ?int $limit = null, $params = array ()) {
         return Async\async(function () use ($symbol, $since, $limit, $params) {
+            /**
+             * get the list of most recent $trades for a particular $symbol
+             * @param {string} $symbol unified $symbol of the $market to fetch $trades for
+             * @param {int|null} $since timestamp in ms of the earliest trade to fetch
+             * @param {int|null} $limit the maximum amount of $trades to fetch
+             * @param {array} $params extra parameters specific to the ripio api endpoint
+             * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-$trades trade structures~
+             */
+            if ($symbol === null) {
+                throw new ArgumentsRequired($this->id . ' watchTicker() requires a $symbol argument');
+            }
             Async\await($this->load_markets());
+            $symbol = $this->symbol($symbol);
             $market = $this->market($symbol);
-            $symbol = $market['symbol'];
-            $name = 'trades';
-            $messageHash = $name . '_' . strtolower($market['id']);
-            $url = $this->urls['api']['ws'] . $messageHash . '/' . $this->options['uuid'];
+            $marketId = $this->market_id($symbol);
+            $name = 'trade@' . $marketId;
+            $messageHash = strtolower($market['id']);
+            $url = $this->urls['api']['ws'];
             $subscription = array(
-                'name' => $name,
+                'topics' => array( $name ),
+                'method' => 'subscribe',
                 'symbol' => $symbol,
                 'messageHash' => $messageHash,
-                'method' => array($this, 'handle_trade'),
+                'methodToCall' => array($this, 'handle_trade'),
             );
-            $trades = Async\await($this->watch($url, $messageHash, null, $messageHash, $subscription));
+            $trades = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "trade@ETH_BRL",
+            //         "timestamp" => 1672856503549,
+            //         "body" => {
+            //             "amount" => 0.2404764,
+            //             "date" => "2019-01-03T02:27:33.947Z",
+            //             "id" => "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+            //             "maker_order_id" => "F49F5BD8-3F5B-4364-BCEE-F36F62DB966A",
+            //             "maker_side" => "buy",
+            //             "maker_type" => "limit",
+            //             "pair" => "ETH_BRL",
+            //             "price" => 15160,
+            //             "taker_order_id" => "FEAB5CEC-7F9E-4F95-B67D-9E8D5C739BE3",
+            //             "taker_side" => "sell",
+            //             "taker_type" => "market",
+            //             "timestamp" => 1675780847920,
+            //             "total_value" => 3638.4
+            //         }
+            //     }
+            //
             if ($this->newUpdates) {
                 $limit = $trades->getLimit ($symbol, $limit);
             }
-            return $this->filter_by_since_limit($trades, $since, $limit, 'timestamp', true);
+            return $this->filter_by_since_limit($trades, $since, $limit, 'timestamp');
+        }) ();
+    }
+
+    public function watch_ticker(?string $symbol = null, $params = array ()) {
+        return Async\async(function () use ($symbol, $params) {
+            /**
+             * watches a price $ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
+             * @param {string} $symbol unified $symbol of the $market to fetch the $ticker for
+             * @param {array} $params not used by ripio watchTicker
+             * @return {array} a ~@link https://docs.ccxt.com/#/?id=$ticker-structure $ticker structure~
+             */
+            if ($symbol === null) {
+                throw new ArgumentsRequired($this->id . ' watchTicker() requires a $symbol argument');
+            }
+            Async\await($this->load_markets());
+            $symbol = $this->symbol($symbol);
+            $market = $this->market($symbol);
+            $marketId = $this->market_id($symbol);
+            $name = 'ticker@' . $marketId;
+            $messageHash = strtolower($market['id']);
+            $url = $this->urls['api']['ws'];
+            $subscription = array(
+                'topics' => array( $name ),
+                'method' => 'subscribe',
+                'symbol' => $symbol,
+                'messageHash' => $messageHash,
+                'methodToCall' => array($this, 'handle_ticker'),
+            );
+            $ticker = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "ticker@ETH_BRL",
+            //         "timestamp" => 1672856683447,
+            //         "body" => {
+            //             "ask" => 4.01,
+            //             "base_code" => "ETH",
+            //             "base_id" => "13A4B83B-E74F-425C-BC0A-03A9C0F29FAD",
+            //             "bid" => 5,
+            //             "date" => "2022-09-28T19:13:40.887Z",
+            //             "high" => 20,
+            //             "last" => 20,
+            //             "low" => 20,
+            //             "pair" => "ETH_BRL",
+            //             "price_change_percent_24h" => "-16.66",
+            //             "quote_id" => "48898138-8623-4555-9468-B1A1505A9352",
+            //             "quote_code" => "BRL",
+            //             "quote_volume" => 600,
+            //             "trades_quantity" => 10,
+            //             "volume" => 124
+            //         }
+            //     }
+            //
+            return $ticker;
+        }) ();
+    }
+
+    public function watch_order_book(?string $symbol = null, ?int $limit = null, $params = array ()) {
+        return Async\async(function () use ($symbol, $limit, $params) {
+            /**
+             * watches information on open orders with bid (buy) and ask (sell) prices, volumes and other data
+             * @param {string} $symbol unified $symbol of the $market to fetch the order book for
+             * @param {int|null} $limit not used by ripio watchOrderBook
+             * @param {array} $params extra parameters specific to the ripio api endpoint
+             * @param {string|null} $params->level $orderbook $level to be used, level_2 or level_3 (if a valid $level is not sent, the level_2 will be used by default)
+             * @return {array} A dictionary of ~@link https://docs.ccxt.com/#/?id=order-book-structure order book structures~ indexed by $market symbols
+             */
+            if ($symbol === null) {
+                throw new ArgumentsRequired($this->id . ' watchOrderBook() requires a $symbol argument');
+            }
+            Async\await($this->load_markets());
+            $symbol = $this->symbol($symbol);
+            $market = $this->market($symbol);
+            $marketId = $this->market_id($symbol);
+            $level = $this->safe_string($params, 'level');
+            if ($level !== 'level_2' && $level !== 'level_3') {
+                $level = 'level_2';
+            }
+            $name = 'orderbook/' . $level . '@' . $marketId;
+            $messageHash = strtolower($market['id']);
+            $url = $this->urls['api']['ws'];
+            $subscription = array(
+                'topics' => array( $name ),
+                'method' => 'subscribe',
+                'symbol' => $symbol,
+                'messageHash' => $messageHash,
+                'methodToCall' => array($this, 'handle_order_book'),
+            );
+            $orderbook = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "orderbook/level_2@ETH_BRL",
+            //         "timestamp" => 1672856653428,
+            //         "body" => {
+            //             "asks" => array(
+            //                 {
+            //                     "amount" => 10,
+            //                     "price" => 25
+            //                 }
+            //             ),
+            //             "bids" => array(
+            //                 {
+            //                     "amount" => 20,
+            //                     "price" => 4
+            //                 }
+            //             ),
+            //             "pair" => "ETH_BRL"
+            //         }
+            //     }
+            //
+            return $orderbook;
+        }) ();
+    }
+
+    public function watch_balance($params = array ()) {
+        return Async\async(function () use ($params) {
+            /**
+             * query for $balance and get the amount of funds available for trading or funds locked in orders
+             * @param {array} $params not used by ripio watchBalance
+             * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#$balance-structure $balance structure~
+             */
+            Async\await($this->load_markets());
+            $name = 'balance';
+            $messageHash = $name;
+            $url = $this->urls['api']['ws'];
+            $ticket = Async\await($this->fetchWebSocketTicket ());
+            $subscription = array(
+                'topics' => array( $name ),
+                'method' => 'subscribe',
+                'ticket' => $ticket,
+                'messageHash' => $messageHash,
+                'methodToCall' => array($this, 'handle_balance'),
+            );
+            $balance = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "balance",
+            //         "timestamp" => 1672856833684,
+            //         "body" => {
+            //             "user_id" => "299E7131-CE8C-422F-A1CF-497BFA116F89",
+            //             "balances" => array(
+            //                 {
+            //                     "available_amount" => 3,
+            //                     "currency_code" => "ETH",
+            //                     "locked_amount" => 1
+            //                 }
+            //             )
+            //         }
+            //     }
+            //
+            return $balance;
+        }) ();
+    }
+
+    public function watch_my_trades(?string $symbol = null, ?int $since = null, ?int $limit = null, $params = array ()) {
+        return Async\async(function () use ($symbol, $since, $limit, $params) {
+            /**
+             * watches information on multiple $trades made by the user
+             * @param {string} $symbol not used by ripio watchMyTrades
+             * @param {int|null} $since not used by ripio watchMyTrades
+             * @param {int|null} $limit not used by ripio watchMyTrades
+             * @param {array} $params not used by ripio watchMyTrades
+             * @return {[array]} a list of [order structures]{@link https://docs.ccxt.com/#/?id=order-structure
+             */
+            Async\await($this->load_markets());
+            $name = 'user_trades';
+            $messageHash = $name;
+            $url = $this->urls['api']['ws'];
+            $ticket = Async\await($this->fetchWebSocketTicket ());
+            $subscription = array(
+                'topics' => array( $name ),
+                'method' => 'subscribe',
+                'ticket' => $ticket,
+                'messageHash' => $messageHash,
+                'methodToCall' => array($this, 'handle_trade'),
+            );
+            $trades = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "user_trades",
+            //         "timestamp" => 1673271591764,
+            //         "body" => {
+            //             "trade" => array(
+            //                 "amount" => 1,
+            //                 "date" => "2023-01-09T13:39:24.057Z",
+            //                 "fee" => 0,
+            //                 "fee_currency" => "BCH",
+            //                 "id" => "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+            //                 "pair_code" => "BCH_BRL",
+            //                 "price" => 49,
+            //                 "side" => "buy",
+            //                 "taker_or_maker" => "taker",
+            //                 "timestamp" => 1675780847920,
+            //                 "total_value" => 49,
+            //                 "type" => "limit"
+            //             ),
+            //             "user_id" => "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+            //         }
+            //     }
+            //
+            return $trades;
+        }) ();
+    }
+
+    public function watch_orders(?string $symbol = null, ?int $since = null, ?int $limit = null, $params = array ()) {
+        return Async\async(function () use ($symbol, $since, $limit, $params) {
+            /**
+             * watches information on multiple orders made by the user
+             * @param {string|null} $symbol not used by ripio watchOrders
+             * @param {int|null} $since not used by ripio watchOrders
+             * @param {int|null} $limit not used by ripio watchOrders
+             * @param {array} $params not used by ripio watchOrders
+             * @return {[array]} a list of ~@link https://docs.ccxt.com/#/?id=$order-structure $order structures~
+             */
+            Async\await($this->load_markets());
+            $name = 'order_status';
+            $messageHash = $name;
+            $url = $this->urls['api']['ws'];
+            $ticket = Async\await($this->fetchWebSocketTicket ());
+            $subscription = array(
+                'topics' => array( $name ),
+                'method' => 'subscribe',
+                'ticket' => $ticket,
+                'messageHash' => $messageHash,
+                'methodToCall' => array($this, 'parse_order'),
+            );
+            $order = Async\await($this->watch($url, $messageHash, $subscription, $messageHash, $subscription));
+            //
+            //     {
+            //         "topic" => "order_status",
+            //         "timestamp" => 1672856713677,
+            //         "body" => {
+            //             "amount" => 4,
+            //             "average_execution_price" => 6,
+            //             "id" => "F55E4E01-C39B-4AA7-848B-1C6A362C386E",
+            //             "created_at" => "2023-01-24T17:28:32.247Z",
+            //             "executed_amount" => 4,
+            //             "external_id" => null,
+            //             "pair" => "ETH_BRL",
+            //             "price" => 6,
+            //             "remaining_amount" => 0,
+            //             "side" => "buy",
+            //             "status" => "executed_completely",
+            //             "type" => "limit",
+            //             "updated_at" => "2023-01-24T17:28:33.993Z",
+            //             "user_id" => "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+            //         }
+            //     }
+            //
+            return $order;
         }) ();
     }
 
     public function handle_trade(Client $client, $message, $subscription) {
         //
-        //     {
-        //         messageId => 'CAAQAA==',
-        //         $payload => 'eyJjcmVhdGVkX2F0IjogMTYwMTczNjI0NywgImFtb3VudCI6ICIwLjAwMjAwIiwgInByaWNlIjogIjEwNTkzLjk5MDAwMCIsICJzaWRlIjogIkJVWSIsICJwYWlyIjogIkJUQ19VU0RDIiwgInRha2VyX2ZlZSI6ICIwIiwgInRha2VyX3NpZGUiOiAiQlVZIiwgIm1ha2VyX2ZlZSI6ICIwIiwgInRha2VyIjogMjYxODU2NCwgIm1ha2VyIjogMjYxODU1N30=',
-        //         properties => array(),
-        //         publishTime => '2020-10-03T14:44:09.881Z'
-        //     }
+        // watchTrades (public)
         //
-        $payload = $this->safe_string($message, 'payload');
+        //      {
+        //          "amount" => 0.2404764,
+        //          "date" => "2019-01-03T02:27:33.947Z",
+        //          "id" => "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+        //          "maker_order_id" => "F49F5BD8-3F5B-4364-BCEE-F36F62DB966A",
+        //          "maker_side" => "buy",
+        //          "maker_type" => "limit",
+        //          "pair" => "ETH_BRL",
+        //          "price" => 15160,
+        //          "taker_order_id" => "FEAB5CEC-7F9E-4F95-B67D-9E8D5C739BE3",
+        //          "taker_side" => "sell",
+        //          "taker_type" => "market",
+        //          "timestamp" => 1675780847920,
+        //          "total_value" => 3638.4
+        //      }
+        //
+        // watchMyTrades (private)
+        //
+        //      {
+        //          "amount" => 1,
+        //          "date" => "2023-01-09T13:39:24.057Z",
+        //          "fee" => 0,
+        //          "fee_currency" => "BCH",
+        //          "id" => "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+        //          "pair_code" => "BCH_BRL",
+        //          "price" => 49,
+        //          "side" => "buy",
+        //          "taker_or_maker" => "taker",
+        //          "timestamp" => 1675780847920,
+        //          "total_value" => 49,
+        //          "type" => "limit"
+        //      }
+        //
+        $payload = $this->safe_value($message, 'body');
         if ($payload === null) {
             return $message;
         }
-        $data = json_decode(base64_decode($payload, $as_associative_array = true));
-        //
-        //     {
-        //         created_at => 1601736247,
-        //         amount => '0.00200',
-        //         price => '10593.990000',
-        //         side => 'BUY',
-        //         pair => 'BTC_USDC',
-        //         taker_fee => '0',
-        //         taker_side => 'BUY',
-        //         maker_fee => '0',
-        //         taker => 2618564,
-        //         maker => 2618557
-        //     }
-        //
         $symbol = $this->safe_string($subscription, 'symbol');
+        $symbol = $this->symbol($symbol);
         $messageHash = $this->safe_string($subscription, 'messageHash');
         $market = $this->market($symbol);
-        $trade = $this->parse_trade($data, $market);
+        $trade = $this->parse_trade($payload, $market);
         $tradesArray = $this->safe_value($this->trades, $symbol);
         if ($tradesArray === null) {
             $limit = $this->safe_integer($this->options, 'tradesLimit', 1000);
@@ -94,59 +395,35 @@ class ripio extends \ccxt\async\ripio {
         $client->resolve ($tradesArray, $messageHash);
     }
 
-    public function watch_ticker(string $symbol, $params = array ()) {
-        return Async\async(function () use ($symbol, $params) {
-            /**
-             * watches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
-             * @param {string} $symbol unified $symbol of the $market to fetch the ticker for
-             * @param {array} $params extra parameters specific to the ripio api endpoint
-             * @return {array} a ~@link https://docs.ccxt.com/#/?id=ticker-structure ticker structure~
-             */
-            Async\await($this->load_markets());
-            $market = $this->market($symbol);
-            $symbol = $market['symbol'];
-            $name = 'rate';
-            $messageHash = $name . '_' . strtolower($market['id']);
-            $url = $this->urls['api']['ws'] . $messageHash . '/' . $this->options['uuid'];
-            $subscription = array(
-                'name' => $name,
-                'symbol' => $symbol,
-                'messageHash' => $messageHash,
-                'method' => array($this, 'handle_ticker'),
-            );
-            return Async\await($this->watch($url, $messageHash, null, $messageHash, $subscription));
-        }) ();
-    }
-
     public function handle_ticker(Client $client, $message, $subscription) {
         //
-        //     {
-        //         messageId => 'CAAQAA==',
-        //         $payload => 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wOTMxMiIsICJ0b3RhbCI6ICI4MzguMDgiLCAicHJpY2UiOiAiOTAwMC4wMCJ9XSwgInNlbGwiOiBbeyJhbW91bnQiOiAiMC4wMDAwMCIsICJ0b3RhbCI6ICIwLjAwIiwgInByaWNlIjogIjkwMDAuMDAifV0sICJ1cGRhdGVkX2lkIjogMTI0NDA0fQ==',
-        //         properties => array(),
-        //         publishTime => '2020-10-03T10:05:09.445Z'
-        //     }
+        // watchTicker (public)
         //
-        $payload = $this->safe_string($message, 'payload');
+        //      {
+        //          "ask" => 4.01,
+        //          "base_code" => "ETH",
+        //          "base_id" => "13A4B83B-E74F-425C-BC0A-03A9C0F29FAD",
+        //          "bid" => 5,
+        //          "date" => "2022-09-28T19:13:40.887Z",
+        //          "high" => 20,
+        //          "last" => 20,
+        //          "low" => 20,
+        //          "pair" => "ETH_BRL",
+        //          "price_change_percent_24h" => "-16.66",
+        //          "quote_id" => "48898138-8623-4555-9468-B1A1505A9352",
+        //          "quote_code" => "BRL",
+        //          "quote_volume" => 600,
+        //          "trades_quantity" => 10,
+        //          "volume" => 124
+        //      }
+        //
+        $payload = $this->safe_value($message, 'body');
         if ($payload === null) {
             return $message;
         }
-        $data = json_decode(base64_decode($payload, $as_associative_array = true));
-        //
-        //     {
-        //         "pair" => "BTC_BRL",
-        //         "last_price" => "68558.59",
-        //         "low" => "54736.11",
-        //         "high" => "70034.68",
-        //         "variation" => "8.75",
-        //         "volume" => "10.10537"
-        //     }
-        //
-        $ticker = $this->parse_ticker($data);
-        $timestamp = $this->parse8601($this->safe_string($message, 'publishTime'));
-        $ticker['timestamp'] = $timestamp;
-        $ticker['datetime'] = $this->iso8601($timestamp);
-        $symbol = $ticker['symbol'];
+        $ticker = $this->parse_ticker($payload);
+        $symbol = $this->safe_string($subscription, 'symbol');
+        $symbol = $this->symbol($symbol);
         $this->tickers[$symbol] = $ticker;
         $messageHash = $this->safe_string($subscription, 'messageHash');
         if ($messageHash !== null) {
@@ -155,117 +432,76 @@ class ripio extends \ccxt\async\ripio {
         return $message;
     }
 
-    public function watch_order_book(string $symbol, ?int $limit = null, $params = array ()) {
-        return Async\async(function () use ($symbol, $limit, $params) {
-            /**
-             * watches information on open orders with bid (buy) and ask (sell) prices, volumes and other data
-             * @param {string} $symbol unified $symbol of the $market to fetch the order book for
-             * @param {int|null} $limit the maximum amount of order book entries to return
-             * @param {array} $params extra parameters specific to the ripio api endpoint
-             * @return {array} A dictionary of ~@link https://docs.ccxt.com/#/?id=order-book-structure order book structures~ indexed by $market symbols
-             */
-            Async\await($this->load_markets());
-            $market = $this->market($symbol);
-            $symbol = $market['symbol'];
-            $name = 'orderbook';
-            $messageHash = $name . '_' . strtolower($market['id']);
-            $url = $this->urls['api']['ws'] . $messageHash . '/' . $this->options['uuid'];
-            $client = $this->client($url);
-            $subscription = array(
-                'name' => $name,
-                'symbol' => $symbol,
-                'messageHash' => $messageHash,
-                'method' => array($this, 'handle_order_book'),
-            );
-            if (!(is_array($client->subscriptions) && array_key_exists($messageHash, $client->subscriptions))) {
-                $this->orderbooks[$symbol] = $this->order_book(array());
-                $client->subscriptions[$messageHash] = $subscription;
-                $options = $this->safe_value($this->options, 'fetchOrderBookSnapshot', array());
-                $delay = $this->safe_integer($options, 'delay', $this->rateLimit);
-                // fetch the snapshot in a separate async call after a warmup $delay
-                $this->delay($delay, array($this, 'fetch_order_book_snapshot'), $client, $subscription);
-            }
-            $orderbook = Async\await($this->watch($url, $messageHash, null, $messageHash, $subscription));
-            return $orderbook->limit ();
-        }) ();
-    }
-
-    public function fetch_order_book_snapshot($client, $subscription) {
-        return Async\async(function () use ($client, $subscription) {
-            $symbol = $this->safe_string($subscription, 'symbol');
-            $messageHash = $this->safe_string($subscription, 'messageHash');
-            try {
-                // todo => this is a synch blocking call in ccxt.php - make it async
-                $snapshot = Async\await($this->fetch_order_book($symbol));
-                $orderbook = $this->orderbooks[$symbol];
-                $messages = $orderbook->cache;
-                $orderbook->reset ($snapshot);
-                // unroll the accumulated deltas
-                for ($i = 0; $i < count($messages); $i++) {
-                    $message = $messages[$i];
-                    $this->handle_order_book_message($client, $message, $orderbook);
-                }
-                $this->orderbooks[$symbol] = $orderbook;
-                $client->resolve ($orderbook, $messageHash);
-            } catch (Exception $e) {
-                $client->reject ($e, $messageHash);
-            }
-        }) ();
-    }
-
     public function handle_order_book(Client $client, $message, $subscription) {
-        $messageHash = $this->safe_string($subscription, 'messageHash');
-        $symbol = $this->safe_string($subscription, 'symbol');
-        $orderbook = $this->safe_value($this->orderbooks, $symbol);
-        if ($orderbook === null) {
-            return $message;
-        }
-        if ($orderbook['nonce'] === null) {
-            $orderbook->cache[] = $message;
-        } else {
-            $this->handle_order_book_message($client, $message, $orderbook);
-            $client->resolve ($orderbook, $messageHash);
-        }
-        return $message;
-    }
-
-    public function handle_order_book_message(Client $client, $message, $orderbook) {
         //
-        //     {
-        //         messageId => 'CAAQAA==',
-        //         $payload => 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wOTMxMiIsICJ0b3RhbCI6ICI4MzguMDgiLCAicHJpY2UiOiAiOTAwMC4wMCJ9XSwgInNlbGwiOiBbeyJhbW91bnQiOiAiMC4wMDAwMCIsICJ0b3RhbCI6ICIwLjAwIiwgInByaWNlIjogIjkwMDAuMDAifV0sICJ1cGRhdGVkX2lkIjogMTI0NDA0fQ==',
-        //         properties => array(),
-        //         publishTime => '2020-10-03T10:05:09.445Z'
-        //     }
+        // watchOrderBook (public)
         //
-        $payload = $this->safe_string($message, 'payload');
+        //      {
+        //          "asks" => array(
+        //              {
+        //                  "amount" => 10,
+        //                  "price" => 25
+        //              }
+        //          ),
+        //          "bids" => array(
+        //              {
+        //                  "amount" => 20,
+        //                  "price" => 4
+        //              }
+        //          ),
+        //          "pair" => "ETH_BRL"
+        //      }
+        //
+        $payload = $this->safe_value($message, 'body');
         if ($payload === null) {
             return $message;
         }
-        $data = json_decode(base64_decode($payload, $as_associative_array = true));
-        //
-        //     {
-        //         "buy" => array(
-        //             array("amount" => "0.05000", "total" => "532.77", "price" => "10655.41")
-        //         ),
-        //         "sell" => array(
-        //             array("amount" => "0.00000", "total" => "0.00", "price" => "10655.41")
-        //         ),
-        //         "updated_id" => 99740
-        //     }
-        //
-        $nonce = $this->safe_integer($data, 'updated_id');
-        if ($nonce > $orderbook['nonce']) {
-            $asks = $this->safe_value($data, 'sell', array());
-            $bids = $this->safe_value($data, 'buy', array());
-            $this->handle_deltas($orderbook['asks'], $asks);
-            $this->handle_deltas($orderbook['bids'], $bids);
-            $orderbook['nonce'] = $nonce;
-            $timestamp = $this->parse8601($this->safe_string($message, 'publishTime'));
-            $orderbook['timestamp'] = $timestamp;
-            $orderbook['datetime'] = $this->iso8601($timestamp);
-        }
+        $symbol = $this->safe_string($subscription, 'symbol');
+        $symbol = $this->symbol($symbol);
+        $timestamp = $this->safe_integer($message, 'timestamp');
+        $orderbook = $this->parse_order_book($payload, $symbol, $timestamp, 'bids', 'asks', 'price', 'amount');
+        $messageHash = $this->safe_string($subscription, 'messageHash');
+        $client->resolve ($orderbook, $messageHash);
         return $orderbook;
+    }
+
+    public function handle_balance(Client $client, $message, $subscription) {
+        //
+        // watchBalance (private)
+        //
+        //      {
+        //          "user_id" => "299E7131-CE8C-422F-A1CF-497BFA116F89",
+        //          "balances" => array(
+        //              {
+        //                  "available_amount" => 3,
+        //                  "currency_code" => "ETH",
+        //                  "locked_amount" => 1
+        //              }
+        //          )
+        //      }
+        //
+        $payload = $this->safe_value($message, 'body');
+        if ($payload === null) {
+            return $message;
+        }
+        $messageHash = $this->safe_string($subscription, 'messageHash');
+        $balances = $this->safe_value($payload, 'balances');
+        $result = array( );
+        for ($i = 0; $i < count($balances); $i++) {
+            $balance = $balances[$i];
+            $currencyId = $this->safe_string($balance, 'currency_code');
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['free'] = $this->safe_number($balance, 'available_amount');
+            $account['used'] = $this->safe_number($balance, 'locked_amount');
+            $account['total'] = $this->safe_number($balance, 'available_amount') . $this->safe_number($balance, 'locked_amount');
+            $result[$code] = $account;
+        }
+        $safeBalance = $this->safe_balance($result);
+        if ($messageHash !== null) {
+            $client->resolve ($safeBalance, $messageHash);
+        }
+        return $safeBalance;
     }
 
     public function handle_delta($bookside, $delta) {
@@ -280,33 +516,13 @@ class ripio extends \ccxt\async\ripio {
         }
     }
 
-    public function ack($client, $messageId) {
-        return Async\async(function () use ($client, $messageId) {
-            // the exchange requires acknowledging each received message
-            Async\await($client->send (array( 'messageId' => $messageId )));
-        }) ();
-    }
-
     public function handle_message(Client $client, $message) {
-        //
-        //     {
-        //         $messageId => 'CAAQAA==',
-        //         payload => 'eyJidXkiOiBbeyJhbW91bnQiOiAiMC4wNTAwMCIsICJ0b3RhbCI6ICI1MzIuNzciLCAicHJpY2UiOiAiMTA2NTUuNDEifV0sICJzZWxsIjogW3siYW1vdW50IjogIjAuMDAwMDAiLCAidG90YWwiOiAiMC4wMCIsICJwcmljZSI6ICIxMDY1NS40MSJ9XSwgInVwZGF0ZWRfaWQiOiA5OTc0MH0=',
-        //         properties => array(),
-        //         publishTime => '2020-09-30T17:35:27.851Z'
-        //     }
-        //
-        $messageId = $this->safe_string($message, 'messageId');
-        if ($messageId !== null) {
-            // the exchange requires acknowledging each received $message
-            $this->spawn(array($this, 'ack'), $client, $messageId);
-        }
         $keys = is_array($client->subscriptions) ? array_keys($client->subscriptions) : array();
         $firstKey = $this->safe_string($keys, 0);
         $subscription = $this->safe_value($client->subscriptions, $firstKey, array());
-        $method = $this->safe_value($subscription, 'method');
-        if ($method !== null) {
-            return $method($client, $message, $subscription);
+        $methodToCall = $this->safe_value($subscription, 'methodToCall');
+        if ($methodToCall !== null) {
+            return $methodToCall($client, $message, $subscription);
         }
         return $message;
     }

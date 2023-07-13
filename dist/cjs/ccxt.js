@@ -107,6 +107,7 @@ var phemex = require('./src/phemex.js');
 var poloniex = require('./src/poloniex.js');
 var poloniexfutures = require('./src/poloniexfutures.js');
 var probit = require('./src/probit.js');
+var ripio = require('./src/ripio.js');
 var stex = require('./src/stex.js');
 var tidex = require('./src/tidex.js');
 var timex = require('./src/timex.js');
@@ -174,6 +175,7 @@ var okx$1 = require('./src/pro/okx.js');
 var phemex$1 = require('./src/pro/phemex.js');
 var poloniexfutures$1 = require('./src/pro/poloniexfutures.js');
 var probit$1 = require('./src/pro/probit.js');
+var ripio$1 = require('./src/pro/ripio.js');
 var upbit$1 = require('./src/pro/upbit.js');
 var wazirx$1 = require('./src/pro/wazirx.js');
 var whitebit$1 = require('./src/pro/whitebit.js');
@@ -279,6 +281,7 @@ const exchanges = {
     'poloniex': poloniex,
     'poloniexfutures': poloniexfutures,
     'probit': probit,
+    'ripio': ripio,
     'stex': stex,
     'tidex': tidex,
     'timex': timex,
@@ -348,6 +351,7 @@ const pro = {
     'phemex': phemex$1,
     'poloniexfutures': poloniexfutures$1,
     'probit': probit$1,
+    'ripio': ripio$1,
     'upbit': upbit$1,
     'wazirx': wazirx$1,
     'whitebit': whitebit$1,
@@ -488,6 +492,7 @@ exports.phemex = phemex;
 exports.poloniex = poloniex;
 exports.poloniexfutures = poloniexfutures;
 exports.probit = probit;
+exports.ripio = ripio;
 exports.stex = stex;
 exports.tidex = tidex;
 exports.timex = timex;
