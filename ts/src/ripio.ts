@@ -43,6 +43,7 @@ export default class ripio extends Exchange {
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTrades': true,
+                'withdraw': true,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1892491/179565296-42198bf8-2228-47d6-a1b5-fd763a163c9d.jpg',
@@ -992,6 +993,65 @@ export default class ripio extends Exchange {
         return orders;
     }
 
+    async withdraw (code: string, amount, address, tag = undefined, params = {}) {
+        /**
+         * @method
+         * @name ripio#withdraw
+         * @description make a withdrawal
+         * @param {string} code unified currency code
+         * @param {float} amount the amount to withdraw
+         * @param {string} address the address to withdraw to
+         * @param {string|undefined} tag
+         * @param {object} params extra parameters specific to the ripio api endpoint
+         * @returns {object} a [transaction structure]{@link https://docs.ccxt.com/#/?id=transaction-structure}
+         */
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
+        this.checkAddress (address);
+        await this.loadMarkets ();
+        const currency = this.currency (code);
+        const feeType = this.safeString (params, 'fee_type', 'regular');
+        const request = {
+            'currency_code': currency['code'],
+            'fee_type': feeType,
+            'amount': amount,
+            'destination': address,
+        };
+        if (tag !== undefined) {
+            request['tag'] = tag;
+        }
+        const memo = this.safeString (params, 'memo');
+        if (memo !== undefined) {
+            request['memo'] = memo;
+        }
+        // TODO(pgold): add network parameter.
+        const response = await this.privatePostWithdrawals (this.extend (request, params));
+        const data = this.safeValue (response, 'data');
+        //
+        //     {
+        //         "data": {
+        //             "amount": "1000",
+        //             "create_date": "2023-07-13T15:54:27.710Z",
+        //             "currency_code": "CREAL",
+        //             "destination_address": " 0xEeA875a27ad44F6f4608097cFcb8c2417A235A41",
+        //             "id": "idwxr8yoV",
+        //             "link": null,
+        //             "miner_fee": "0.1",
+        //             "miner_fee_type": "regular",
+        //             "network": "celo",
+        //             "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        //             "status": "pending",
+        //             "tax_amount": "0",
+        //             "tax_index": "0",
+        //             "tax_index_calculated": "0",
+        //             "transaction_id": null,
+        //             "update_date": "2023-07-11T12:22:34.590Z"
+        //         },
+        //         "message": null
+        //     }
+        //
+        return this.parseTransaction (data, currency);
+    }
+
     async fetchWebSocketTicket () {
         /**
          * @method
@@ -1270,6 +1330,114 @@ export default class ripio extends Exchange {
             'fee': undefined,
             'trades': trades,
         }, market);
+    }
+
+    parseTransactionStatus (status) {
+        const statuses = {
+            'pending': 'pending',
+            'confirmed': 'ok',
+            'canceled': 'failed',
+        };
+        return this.safeString (statuses, status, status);
+    }
+
+    parseTransaction (transaction, currency = undefined) {
+        // TODO(pgold): fetchWithdrawals and fetchDeposits do not match.
+        //
+        // withdraw
+        //
+        //     {
+        //         "amount": "1000",
+        //         "create_date": "2023-07-13T15:54:27.710Z",
+        //         "currency_code": "CREAL",
+        //         "destination_address": " 0xEeA875a27ad44F6f4608097cFcb8c2417A235A41",
+        //         "id": "idwxr8yoV",
+        //         "link": null,
+        //         "miner_fee": "0.1",
+        //         "miner_fee_type": "regular",
+        //         "network": "celo",
+        //         "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        //         "status": "pending",
+        //         "tax_amount": "0",
+        //         "tax_index": "0",
+        //         "tax_index_calculated": "0",
+        //         "transaction_id": null,
+        //         "update_date": "2023-07-11T12:22:34.590Z"
+        //     },
+        //
+        // fetchWithdrawals
+        //
+        //     {
+        //         "amount": 5000,
+        //         "code": "eY_ZNjWJ8",
+        //         "create_date": "2022-08-31T18:19:59.312Z",
+        //         "currency_code": "CREAL",
+        //         "destination_address": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        //         "is_internal": false,
+        //         "link": null,
+        //         "miner_fee": 0.1,
+        //         "miner_fee_type": "regular",
+        //         "network": "celo",
+        //         "origin_address": "0x9e240434E845D7Bb2CE7218eD487687a6bC2E111",
+        //         "status": "confirmed",
+        //         "tax_amount": 0,
+        //         "tax_index": 0,
+        //         "tax_index_calculated": 0,
+        //         "transaction_id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        //         "update_date": "2022-08-31T19:01:01.420Z"
+        //     }
+        //
+        // fetchDeposits
+        //
+        //     {
+        //         "amount": 458.81,
+        //         "code": "Zet_q-K42",
+        //         "confirmation_date": "2022-08-02T11:25:32.457Z",
+        //         "create_date": "2022-08-02T11:24:28.332Z",
+        //         "currency_code": "CREAL",
+        //         "hash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        //         "is_internal": false,
+        //         "network": "celo",
+        //         "status": "confirmed"
+        //     }
+        //
+        const id = this.safeString (transaction, 'id');
+        const amount = this.safeNumber (transaction, 'amount');
+        const addressTo = this.safeString (transaction, 'origin_address');
+        const addressFrom = this.safeString (transaction, 'destination_address');
+        const txid = this.safeString2 (transaction, 'transaction_id', 'hash');
+        const create_datetime = this.safeString (transaction, 'create_date');
+        const update_datetime = this.safeString2 (transaction, 'update_date', 'confirmation_date');
+        const currencyId = this.safeString (transaction, 'currency_code');
+        const code = this.safeCurrencyCode (currencyId, currency);
+        const status = this.parseTransactionStatus (this.safeString (transaction, 'status'));
+        const network = this.safeString (transaction, 'network');
+        const tag = this.safeString (transaction, 'tag');
+        const feeCost = this.safeNumber (transaction, 'miner_fee');
+        let fee = undefined;
+        if (feeCost !== undefined) {
+            fee = { 'currency': code, 'cost': feeCost };
+        }
+        return {
+            'info': transaction,
+            'id': id,
+            'currency': code,
+            'amount': amount,
+            'network': network,
+            'address': undefined,
+            'addressTo': addressTo,
+            'addressFrom': addressFrom,
+            'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
+            'status': status,
+            'type': undefined,
+            'updated': this.parse8601 (update_datetime),
+            'txid': txid,
+            'timestamp': this.parse8601 (create_datetime),
+            'datetime': create_datetime,
+            'fee': fee,
+        };
     }
 
     sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
