@@ -86,7 +86,7 @@ export default class ripio extends ripioRest {
         if (this.newUpdates) {
             limit = trades.getLimit (symbol, limit);
         }
-        return this.filterBySinceLimit (trades, since, limit, 'timestamp', true);
+        return this.filterBySinceLimit (trades, since, limit, 'timestamp');
     }
 
     async watchTicker (symbol: string = undefined, params = {}) {
